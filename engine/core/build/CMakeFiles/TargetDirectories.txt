@@ -1,7 +1,0 @@
-C:/Users/aytug/documents/entropy8/engine/core/build/CMakeFiles/entropy8.dir
-C:/Users/aytug/documents/entropy8/engine/core/build/CMakeFiles/edit_cache.dir
-C:/Users/aytug/documents/entropy8/engine/core/build/CMakeFiles/rebuild_cache.dir
-C:/Users/aytug/documents/entropy8/engine/core/build/CMakeFiles/list_install_components.dir
-C:/Users/aytug/documents/entropy8/engine/core/build/CMakeFiles/install.dir
-C:/Users/aytug/documents/entropy8/engine/core/build/CMakeFiles/install/local.dir
-C:/Users/aytug/documents/entropy8/engine/core/build/CMakeFiles/install/strip.dir
