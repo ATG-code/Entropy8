@@ -7,6 +7,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     cmake \
     ninja-build \
+    pkg-config \
+    liblz4-dev \
+    liblzma-dev \
+    libzstd-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -24,6 +28,12 @@ RUN cd engine/core \
 # Stage 2: Runtime image with Python + CLI
 # -----------------------------------------------------------------------------
 FROM python:3.12-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    liblz4-1 \
+    liblzma5 \
+    libzstd1 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

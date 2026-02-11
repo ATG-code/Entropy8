@@ -2,6 +2,7 @@
 #define ENTROPY8_ENGINE_ARCHIVE_HPP
 
 #include "../include/entropy8/io.h"
+#include "../include/entropy8/codec.h"
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -13,8 +14,9 @@ namespace entropy8 {
 struct Entry {
 	std::string path;
 	uint64_t uncompressed_size{0};
-	uint64_t data_offset{0};  /* offset in archive stream */
+	uint64_t data_offset{0};   /* offset in archive stream */
 	uint32_t compressed_size{0};
+	uint8_t  codec_id{0};      /* E8Codec enum value */
 };
 
 /**
@@ -36,9 +38,10 @@ public:
 	Archive(const Archive&) = delete;
 	Archive& operator=(const Archive&) = delete;
 
-	/** Write mode: add file from content stream; uses thread pool for compression. */
+	/** Write mode: add file from content stream with compression. */
 	int add(const char* path, E8Stream* content_stream,
-	        int (*progress)(void*, uint64_t, uint64_t), void* progress_user);
+	        int (*progress)(void*, uint64_t, uint64_t), void* progress_user,
+	        enum E8Codec codec = E8_CODEC_ZSTD, int level = 3);
 
 	/** Read mode: extract entry at index to output stream. */
 	int extract(size_t index, E8Stream* output_stream,

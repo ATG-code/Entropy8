@@ -4,9 +4,18 @@ project(entropy8_core LANGUAGES C CXX)
 set(ENTROPY8_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(ENTROPY8_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LZ4  REQUIRED IMPORTED_TARGET liblz4)
+pkg_check_modules(LZMA REQUIRED IMPORTED_TARGET liblzma)
+pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
+
 add_library(entropy8 SHARED
   ${ENTROPY8_SRC_DIR}/io.c
   ${ENTROPY8_SRC_DIR}/entropy8_api.c
+  ${ENTROPY8_SRC_DIR}/codec.c
+  ${ENTROPY8_SRC_DIR}/algorithms/lz4.c
+  ${ENTROPY8_SRC_DIR}/algorithms/lzma.c
+  ${ENTROPY8_SRC_DIR}/algorithms/zstd.c
   ${ENTROPY8_SRC_DIR}/engine/thread_pool.cpp
   ${ENTROPY8_SRC_DIR}/engine/archive.cpp
   ${ENTROPY8_SRC_DIR}/engine/bridge.cpp
@@ -18,6 +27,7 @@ target_include_directories(entropy8
 )
 
 target_compile_features(entropy8 PUBLIC c_std_11 PRIVATE cxx_std_17)
+target_link_libraries(entropy8 PRIVATE PkgConfig::LZ4 PkgConfig::LZMA PkgConfig::ZSTD)
 
 set_target_properties(entropy8 PROPERTIES
   C_VISIBILITY_PRESET hidden

@@ -2,6 +2,7 @@
 #include "thread_pool.hpp"
 #include <cstring>
 #include <vector>
+#include <algorithm>
 
 namespace entropy8 {
 
@@ -10,6 +11,7 @@ static const uint16_t VERSION = 1;
 static const size_t BUF_SIZE = 256 * 1024;
 
 Archive::Archive(E8Stream* stream, Mode mode) : stream_(stream), mode_(mode) {
+	e8_codecs_init();
 	if (mode == Mode::Write) {
 		pool_ = std::make_unique<ThreadPool>(0);
 		if (e8_write(stream_, MAGIC, 4) != 4) { /* caller will see failed state */ }
@@ -19,35 +21,69 @@ Archive::Archive(E8Stream* stream, Mode mode) : stream_(stream), mode_(mode) {
 Archive::~Archive() = default;
 
 int Archive::add(const char* path, E8Stream* content_stream,
-                 int (*progress)(void*, uint64_t, uint64_t), void* progress_user) {
-	if (mode_ != Mode::Write || !path || !content_stream) return -1; /* E8_ERR_INVALID_ARG */
+                 int (*progress)(void*, uint64_t, uint64_t), void* progress_user,
+                 enum E8Codec codec, int level) {
+	if (mode_ != Mode::Write || !path || !content_stream) return -1;
 
-	int64_t start = e8_seek(stream_, 0, 1); /* SEEK_CUR = current position */
+	/* Read entire input into memory (needed for single-shot compress) */
+	std::vector<uint8_t> raw;
+	{
+		std::vector<uint8_t> buf(BUF_SIZE);
+		while (true) {
+			ptrdiff_t n = e8_read(content_stream, buf.data(), buf.size());
+			if (n < 0) return -1;
+			if (n == 0) break;
+			raw.insert(raw.end(), buf.data(), buf.data() + n);
+		}
+	}
+	uint64_t raw_size = raw.size();
+
+	/* Compress */
+	const E8CodecVtable* cv = e8_codec_get(codec);
+	if (!cv) cv = e8_codec_get(E8_CODEC_STORE);
+
+	std::vector<uint8_t> comp;
+	uint32_t comp_size;
+	uint8_t used_codec;
+
+	if (cv->id == E8_CODEC_STORE || !cv->compress) {
+		/* Store mode: no compression */
+		comp = std::move(raw);
+		comp_size = static_cast<uint32_t>(raw_size);
+		used_codec = E8_CODEC_STORE;
+	} else {
+		size_t bound = cv->bound ? cv->bound(raw.size()) : raw.size() + raw.size() / 3 + 1024;
+		comp.resize(bound);
+		size_t csize = cv->compress(raw.data(), raw.size(), comp.data(), comp.size(), level);
+		if (csize == 0 || csize >= raw_size) {
+			/* Compression failed or didn't help; fall back to store */
+			comp = std::move(raw);
+			comp_size = static_cast<uint32_t>(raw_size);
+			used_codec = E8_CODEC_STORE;
+		} else {
+			comp.resize(csize);
+			comp_size = static_cast<uint32_t>(csize);
+			used_codec = static_cast<uint8_t>(cv->id);
+		}
+	}
+
+	/* Write compressed data to archive stream */
+	int64_t start = e8_seek(stream_, 0, 1);
 	if (start < 0) return -1;
+
+	ptrdiff_t w = e8_write(stream_, comp.data(), comp_size);
+	if (w != static_cast<ptrdiff_t>(comp_size)) return -1;
+
+	if (progress && progress(progress_user, raw_size, raw_size) != 0) return -2;
 
 	Entry e;
 	e.path = path;
 	e.data_offset = static_cast<uint64_t>(start);
-	e.compressed_size = 0;
-
-	std::vector<uint8_t> buf(BUF_SIZE);
-	uint64_t total = 0;
-
-	/* For minimal implementation: store uncompressed (compressed_size = uncompressed_size). */
-	while (true) {
-		ptrdiff_t n = e8_read(content_stream, buf.data(), buf.size());
-		if (n < 0) return -1; /* E8_ERR_IO */
-		if (n == 0) break;
-		ptrdiff_t w = e8_write(stream_, buf.data(), static_cast<size_t>(n));
-		if (w != n) return -1;
-		e.uncompressed_size += static_cast<uint64_t>(n);
-		total += static_cast<uint64_t>(n);
-		if (progress && progress(progress_user, total, 0) != 0) return -2; /* abort */
-	}
-
-	e.compressed_size = static_cast<uint32_t>(e.uncompressed_size);
+	e.uncompressed_size = raw_size;
+	e.compressed_size = comp_size;
+	e.codec_id = used_codec;
 	entries_.push_back(std::move(e));
-	return 0; /* E8_OK */
+	return 0;
 }
 
 int Archive::extract(size_t index, E8Stream* output_stream,
@@ -58,20 +94,36 @@ int Archive::extract(size_t index, E8Stream* output_stream,
 	int64_t pos = e8_seek(stream_, static_cast<int64_t>(e.data_offset), 0);
 	if (pos < 0) return -1;
 
-	std::vector<uint8_t> buf(BUF_SIZE);
-	uint64_t remaining = e.uncompressed_size;
-	uint64_t done = 0;
-
-	while (remaining > 0) {
-		size_t to_read = static_cast<size_t>(remaining < buf.size() ? remaining : buf.size());
-		ptrdiff_t n = e8_read(stream_, buf.data(), to_read);
-		if (n <= 0) return -1;
-		ptrdiff_t w = e8_write(output_stream, buf.data(), static_cast<size_t>(n));
-		if (w != n) return -1;
-		remaining -= static_cast<uint64_t>(n);
-		done += static_cast<uint64_t>(n);
-		if (progress && progress(progress_user, done, e.uncompressed_size) != 0) return -2;
+	/* Read compressed block */
+	std::vector<uint8_t> comp(e.compressed_size);
+	{
+		size_t read_total = 0;
+		while (read_total < e.compressed_size) {
+			ptrdiff_t n = e8_read(stream_, comp.data() + read_total,
+			                      e.compressed_size - read_total);
+			if (n <= 0) return -1;
+			read_total += static_cast<size_t>(n);
+		}
 	}
+
+	/* Decompress */
+	const E8CodecVtable* cv = e8_codec_get(static_cast<E8Codec>(e.codec_id));
+	std::vector<uint8_t> out;
+
+	if (!cv || cv->id == E8_CODEC_STORE || !cv->decompress) {
+		/* Store: data is already uncompressed */
+		out = std::move(comp);
+	} else {
+		out.resize(e.uncompressed_size);
+		size_t dsize = cv->decompress(comp.data(), comp.size(), out.data(), out.size());
+		if (dsize != e.uncompressed_size) return -1;
+	}
+
+	/* Write to output stream */
+	ptrdiff_t w = e8_write(output_stream, out.data(), out.size());
+	if (w != static_cast<ptrdiff_t>(out.size())) return -1;
+
+	if (progress && progress(progress_user, e.uncompressed_size, e.uncompressed_size) != 0) return -2;
 	return 0;
 }
 
@@ -111,6 +163,8 @@ int Archive::finalize() {
 		uint64_t off = e.data_offset;
 		if (e8_write(stream_, &off, 8) != 8) return -1;
 		if (e8_write(stream_, &e.compressed_size, 4) != 4) return -1;
+		uint8_t cid = e.codec_id;
+		if (e8_write(stream_, &cid, 1) != 1) return -1;
 	}
 
 	/* Write dir_size as trailer (last 4 bytes of file) */
@@ -163,6 +217,7 @@ int Archive::load() {
 		if (e8_read(stream_, &e.uncompressed_size, 8) != 8) return -1;
 		if (e8_read(stream_, &e.data_offset, 8) != 8) return -1;
 		if (e8_read(stream_, &e.compressed_size, 4) != 4) return -1;
+		if (e8_read(stream_, &e.codec_id, 1) != 1) return -1;
 		entries_.push_back(std::move(e));
 	}
 	return 0;
