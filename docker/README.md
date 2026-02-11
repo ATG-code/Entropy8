@@ -1,23 +1,23 @@
 # Docker
 
-Tüm Docker dosyaları bu klasördedir. Build **her zaman proje kökünden** (repository root) alınır; context proje kökü olmalı.
+All Docker files are in this directory. The build is **always** run from the repository root; the build context must be the repo root.
 
 ## .dockerignore
 
-Docker build sırasında exclude kurallarının uygulanması için `.dockerignore` **proje kökünde** olmalı. İlk kullanımda kopyalayın:
+For Docker to apply exclude rules during build, `.dockerignore` must be at the **repository root**. Copy it on first use:
 
 ```bash
-# Proje kökünden
+# From repository root
 cp docker/.dockerignore .
 ```
 
-## Build (proje kökünden)
+## Build (from repository root)
 
 ```bash
 docker build -f docker/Dockerfile -t entropy8:latest .
 ```
 
-## Çalıştırma
+## Run
 
 ```bash
 docker run --rm entropy8:latest --help
@@ -26,9 +26,9 @@ docker run --rm -v "$(pwd)/data:/data" entropy8:latest list /data/archive.e8
 docker run --rm -v "$(pwd)/data:/data" entropy8:latest extract /data/archive.e8 /data/out
 ```
 
-Windows (PowerShell) için volume: `-v "${PWD}/data:/data"`
+On Windows (PowerShell) for volume: `-v "${PWD}/data:/data"`
 
-## Docker Compose (proje kökünden)
+## Docker Compose (from repository root)
 
 ```bash
 docker compose -f docker/docker-compose.yml build
@@ -37,4 +37,4 @@ docker compose -f docker/docker-compose.yml run --rm entropy8 list /data/archive
 docker compose -f docker/docker-compose.yml run --rm entropy8 extract /data/archive.e8 /data/out
 ```
 
-Compose, `../data` ile proje kökündeki `data` klasörünü container içinde `/data` olarak bağlar.
+Compose mounts the `data` directory at the repo root as `/data` inside the container via `../data`.

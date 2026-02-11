@@ -17,9 +17,31 @@ cmake --build .
 
 Output: `libentropy8.dll` (Windows) or `libentropy8.so` (Unix). Copy it next to `engine/bindings/python/entropy8_engine/` so the Python binding can load it.
 
-## CLI (Python)
+## Run in dev mode (recommended)
 
-From the repo root, with the shared library in place:
+Scripts that build the engine if needed and run the CLI (from repo root or any directory):
+
+**Linux / macOS:**
+```bash
+./scripts/run.sh --help
+./scripts/run.sh create archive.e8 file1.txt file2.txt
+./scripts/run.sh list archive.e8
+./scripts/run.sh extract archive.e8 ./out
+```
+
+**Windows (PowerShell):**
+```powershell
+.\scripts\run.ps1 --help
+.\scripts\run.ps1 create archive.e8 file1.txt file2.txt
+.\scripts\run.ps1 list archive.e8
+.\scripts\run.ps1 extract archive.e8 .\out
+```
+
+On first run, if the library is missing the engine is built automatically; `cmake` and a C/C++ compiler are required.
+
+## CLI (manual)
+
+From repo root, when the library is already in `engine/bindings/python/entropy8_engine/`:
 
 ```bash
 python apps/cli/entropy8_cli/main.py create archive.e8 file1.txt file2.txt
@@ -29,10 +51,10 @@ python apps/cli/entropy8_cli/main.py extract archive.e8 [output_dir]
 
 ## Docker
 
-Tüm Docker dosyaları `docker/` klasöründe. Build proje kökünden alınır (ayrıntı için `docker/README.md`):
+All Docker files live in `docker/`. Build from repo root (see `docker/README.md` for details):
 
 ```bash
-cp docker/.dockerignore .   # ilk seferde (exclude kuralları için)
+cp docker/.dockerignore .   # once (for exclude rules)
 docker build -f docker/Dockerfile -t entropy8:latest .
 docker run --rm entropy8:latest --help
 docker run --rm -v "$(pwd)/data:/data" entropy8:latest create /data/archive.e8 /data/file1.txt
