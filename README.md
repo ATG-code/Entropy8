@@ -1,71 +1,130 @@
 # Entropy8
-Entropy8 is a smart, cross-platform file archiver that analyzes data entropy to choose the most efficient 
-compression algorithm automatically.
 
-- **API: C** – ABI-stable, Python (and other) bindings, low-level I/O only (stream callbacks, no `FILE*`).
-- **Engine: C++** – Thread pool, resource management, archive format (magic + data + directory at end).
-- **UI: Python** – CLI (and optional GUI) over the C API.
+A modern, cross-platform file archiver with pluggable compression codecs (LZ4, LZMA, Zstd) and a native desktop GUI.
 
-## Build (engine)
+## Architecture
 
-```bash
-cd engine/core
-mkdir build && cd build
-cmake .. -DCMAKE_BUILD_TYPE=Release
-cmake --build .
+| Layer | Language | Role |
+|-------|----------|------|
+| **API** | C | ABI-stable public interface, stream-based I/O (no `FILE*`), codec registry |
+| **Engine** | C++ | Thread pool, archive format (magic + data blocks + directory), compression dispatch |
+| **GUI** | C++ / Dear ImGui | Native desktop app — compact Keka-style dark UI |
+| **CLI** | Python | Command-line interface over the C API via ctypes |
+
+### Supported Codecs
+
+| Codec | Description |
+|-------|-------------|
+| Store | No compression (passthrough) |
+| LZ4 | Very fast compression |
+| LZMA | High compression ratio |
+| Zstd | Balanced speed/ratio (default) |
+
+### Archive Format (.e8)
+
+```
+[Magic: "E8AR" 4B] [Data blocks...] [Directory] [DirSize 4B]
 ```
 
-Output: `libentropy8.dll` (Windows) or `libentropy8.so` (Unix). Copy it next to `engine/bindings/python/entropy8_engine/` so the Python binding can load it.
+Each directory entry stores: path, uncompressed size, compressed size, data offset, codec ID.
 
-## Run in dev mode (recommended)
+## Quick Start
 
-Scripts that build the engine if needed and run the CLI (from repo root or any directory):
+### GUI (recommended)
 
-**Linux / macOS:**
-```bash
-./scripts/run.sh --help
-./scripts/run.sh create archive.e8 file1.txt file2.txt
-./scripts/run.sh list archive.e8
-./scripts/run.sh extract archive.e8 ./out
-```
+Build and run the native desktop application:
 
 **Windows (PowerShell):**
 ```powershell
-.\scripts\run.ps1 --help
+.\scripts\build-gui.ps1 -Run
+```
+
+**Linux / macOS:**
+```bash
+./scripts/build-gui.sh --run
+```
+
+The GUI opens a compact settings panel. Drag and drop files onto the window to create archives, or drop `.e8` files to view/extract them.
+
+### CLI (via Docker)
+
+No local toolchain needed — runs in a container:
+
+**Windows:**
+```powershell
 .\scripts\run.ps1 create archive.e8 file1.txt file2.txt
 .\scripts\run.ps1 list archive.e8
 .\scripts\run.ps1 extract archive.e8 .\out
 ```
 
-On first run, if the library is missing the engine is built automatically; `cmake` and a C/C++ compiler are required.
-
-## CLI (manual)
-
-From repo root, when the library is already in `engine/bindings/python/entropy8_engine/`:
-
+**Linux / macOS:**
 ```bash
-python apps/cli/entropy8_cli/main.py create archive.e8 file1.txt file2.txt
-python apps/cli/entropy8_cli/main.py list archive.e8
-python apps/cli/entropy8_cli/main.py extract archive.e8 [output_dir]
+./scripts/run.sh create archive.e8 file1.txt file2.txt
+./scripts/run.sh list archive.e8
+./scripts/run.sh extract archive.e8 ./out
 ```
 
-## Docker
+## Build from Source
 
-All Docker files live in `docker/`. Build from repo root (see `docker/README.md` for details):
+### Prerequisites
+
+- CMake 3.14+
+- C/C++ compiler (GCC, Clang, or MSVC)
+- Git (for FetchContent dependency download)
+
+All compression libraries (LZ4, Zstd, liblzma) and GUI dependencies (GLFW, Dear ImGui, tinyfiledialogs) are fetched automatically via CMake FetchContent — no manual installation required.
+
+### Build Everything
 
 ```bash
-cp docker/.dockerignore .   # once (for exclude rules)
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+```
+
+Outputs:
+- `build/bin/entropy8_gui` — GUI application
+- `build/bin/libentropy8.dll` (Windows) / `libentropy8.so` (Linux) — shared library
+
+### Engine Only (for Python binding)
+
+```bash
+cd engine/core
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
+
+Copy the resulting shared library to `engine/bindings/python/entropy8_engine/` for the Python CLI.
+
+## Docker (CLI only)
+
+See [docker/README.md](docker/README.md) for container-based usage.
+
+```bash
 docker build -f docker/Dockerfile -t entropy8:latest .
-docker run --rm entropy8:latest --help
-docker run --rm -v "$(pwd)/data:/data" entropy8:latest create /data/archive.e8 /data/file1.txt
-docker compose -f docker/docker-compose.yml build
-docker compose -f docker/docker-compose.yml run --rm entropy8 create /data/archive.e8 /data/file1.txt
+docker run --rm -v "$(pwd):/workspace" -w /workspace entropy8:latest create archive.e8 file1.txt
 ```
 
-## Layout
+## Project Layout
 
-- `engine/core/include/entropy8/` – C API: `entropy8.h`, `io.h`, `config.h`.
-- `engine/core/src/` – C: `io.c`, `entropy8_api.c`; C++: `engine/` (bridge, archive, thread_pool).
-- `engine/bindings/python/entropy8_engine/` – ctypes binding and stream helpers.
-- `apps/cli/entropy8_cli/` – CLI (create/list/extract).
-- `docs/architecture.md` – Architecture and design choices.
+```
+entropy8/
+├── CMakeLists.txt                    # Top-level build (engine + GUI)
+├── engine/core/
+│   ├── include/entropy8/            # C API headers (entropy8.h, io.h, codec.h, config.h)
+│   ├── src/                         # C: io.c, entropy8_api.c, codec.c
+│   │   ├── algorithms/              # lz4.c, lzma.c, zstd.c
+│   │   └── engine/                  # C++: archive.cpp, bridge.cpp, thread_pool.cpp
+│   └── CMakeLists.txt
+├── engine/bindings/python/          # ctypes Python binding
+├── apps/
+│   ├── gui/                         # Native C++ GUI (Dear ImGui + GLFW)
+│   │   ├── src/                     # main.cpp, ui.cpp, app.cpp, theme.cpp
+│   │   └── CMakeLists.txt
+│   └── cli/                         # Python CLI (create/list/extract)
+├── docker/                          # Dockerfile, docker-compose.yml
+└── scripts/                         # build-gui.ps1, build-gui.sh, run.ps1, run.sh
+```
+
+## License
+
+See [LICENSE](LICENSE).

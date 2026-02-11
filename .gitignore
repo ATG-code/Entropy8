@@ -2,6 +2,8 @@
 build/
 cmake-build-*/
 out/
+release/
+debug/
 *.o
 *.obj
 *.a
