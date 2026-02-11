@@ -1,0 +1,12 @@
+services:
+  entropy8:
+    build: .
+    image: entropy8:latest
+    container_name: entropy8
+    # Override entrypoint to run your command; default shows --help
+    # Example: docker compose run --rm entropy8 create /data/out.e8 /data/file1.txt
+    volumes:
+      - ./data:/data
+    working_dir: /data
+    entrypoint: ["python", "/app/apps/cli/entropy8_cli/main.py"]
+    command: ["--help"]

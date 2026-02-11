@@ -1,0 +1,32 @@
+# Git and IDE
+.git
+.gitignore
+.github
+
+# Build artifacts (we build inside Docker)
+engine/core/build
+**/build
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+*.egg-info
+.eggs
+dist
+*.so
+*.dll
+*.dll.a
+*.dylib
+
+# Local / OS
+.DS_Store
+Thumbs.db
+*.log
+testfile.txt
+*.e8
+
+# Docs and packaging (not needed at runtime)
+docs
+packaging
+benchmarks
+scripts
+LICENSE

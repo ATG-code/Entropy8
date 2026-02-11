@@ -27,6 +27,27 @@ python apps/cli/entropy8_cli/main.py list archive.e8
 python apps/cli/entropy8_cli/main.py extract archive.e8 [output_dir]
 ```
 
+## Docker
+
+Build and run the CLI in a container (Linux image, builds `libentropy8.so`):
+
+```bash
+docker build -t entropy8:latest .
+docker run --rm entropy8:latest --help
+docker run --rm -v "$(pwd)/data:/data" entropy8:latest create /data/archive.e8 /data/file1.txt
+docker run --rm -v "$(pwd)/data:/data" entropy8:latest list /data/archive.e8
+docker run --rm -v "$(pwd)/data:/data" entropy8:latest extract /data/archive.e8 /data/out
+```
+
+With Docker Compose (mount `./data` as `/data`):
+
+```bash
+docker compose build
+docker compose run --rm entropy8 create /data/archive.e8 /data/file1.txt
+docker compose run --rm entropy8 list /data/archive.e8
+docker compose run --rm entropy8 extract /data/archive.e8 /data/out
+```
+
 ## Layout
 
 - `engine/core/include/entropy8/` – C API: `entropy8.h`, `io.h`, `config.h`.
