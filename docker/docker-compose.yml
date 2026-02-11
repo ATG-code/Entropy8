@@ -1,12 +1,13 @@
+# Build from repo root: docker compose -f docker/docker-compose.yml build
 services:
   entropy8:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     image: entropy8:latest
     container_name: entropy8
-    # Override entrypoint to run your command; default shows --help
-    # Example: docker compose run --rm entropy8 create /data/out.e8 /data/file1.txt
     volumes:
-      - ./data:/data
+      - ../data:/data
     working_dir: /data
     entrypoint: ["python", "/app/apps/cli/entropy8_cli/main.py"]
     command: ["--help"]
