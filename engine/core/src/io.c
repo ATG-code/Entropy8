@@ -16,8 +16,9 @@ int e8_stream_create(E8Stream *out, const E8StreamVtable *vtable, void *ctx) {
 
 void e8_stream_destroy(E8Stream *stream) {
 	if (!stream) return;
-	if (stream->vtable && stream->vtable->close && stream->ctx) {
-		stream->vtable->close(stream->ctx);
+	if (stream->vtable) {
+		if (stream->vtable->flush) stream->vtable->flush(stream->ctx);
+		if (stream->vtable->close) stream->vtable->close(stream->ctx);
 	}
 	stream->vtable = NULL;
 	stream->ctx = NULL;
@@ -40,6 +41,6 @@ int64_t e8_seek(E8Stream *stream, int64_t offset, int origin) {
 
 int e8_flush(E8Stream *stream) {
 	if (!stream || !stream->vtable) return 0;
-	if (stream->vtable->flush && stream->ctx) return stream->vtable->flush(stream->ctx);
+	if (stream->vtable->flush) return stream->vtable->flush(stream->ctx);
 	return 0;
 }

@@ -48,21 +48,27 @@ E8ProgressFn = ctypes.CFUNCTYPE(c_int, c_void_p, c_uint64, c_uint64)
 
 
 def _find_lib():
+    """Find and load the entropy8 shared library. Returns a ctypes.CDLL or raises OSError."""
     base = os.path.dirname(os.path.abspath(__file__))
     if sys.platform == "win32":
         names = ["entropy8.dll", "libentropy8.dll"]
     else:
         names = ["libentropy8.so", "libentropy8.so.1", "libentropy8.dylib"]
+    # Try local path first (next to this .py file)
     for n in names:
-        path = os.path.join(base, n)
-        if os.path.isfile(path):
-            return path
+        p = os.path.join(base, n)
+        if os.path.isfile(p):
+            return ctypes.CDLL(p)
+    # Try system library path
     for n in names:
         try:
             return ctypes.CDLL(n)
         except OSError:
             pass
-    return None
+    raise OSError(
+        f"libentropy8 not found. Searched {base} for {names}. "
+        "Build the engine first or copy the shared library next to this file."
+    )
 
 
 _lib = None
@@ -71,11 +77,7 @@ _lib = None
 def _lib_entropy8():
     global _lib
     if _lib is None:
-        path = _find_lib()
-        if path:
-            _lib = ctypes.CDLL(path)
-        else:
-            _lib = ctypes.CDLL("entropy8" if sys.platform != "win32" else "entropy8.dll")
+        _lib = _find_lib()
     return _lib
 
 
@@ -98,13 +100,13 @@ def _bind():
 
     lib.e8_archive_add.argtypes = [
         c_void_p, c_char_p, POINTER(E8Stream),
-        E8ProgressFn, c_void_p
+        c_void_p, c_void_p  # progress callback + user data (both nullable)
     ]
     lib.e8_archive_add.restype = c_int
 
     lib.e8_archive_extract.argtypes = [
         c_void_p, c_size_t, POINTER(E8Stream),
-        E8ProgressFn, c_void_p
+        c_void_p, c_void_p  # progress callback + user data (both nullable)
     ]
     lib.e8_archive_extract.restype = c_int
 

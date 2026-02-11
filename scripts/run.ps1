@@ -1,49 +1,54 @@
-# Entropy8 – run in dev mode: build engine if needed, then run CLI.
+# Entropy8 – run in dev mode via Docker. No local Python or C++ toolchain needed.
 # Usage: scripts/run.ps1 [create|list|extract] [arg ...]
 # Example: .\scripts\run.ps1 create archive.e8 file1.txt
 #          .\scripts\run.ps1 list archive.e8
+#          .\scripts\run.ps1 extract archive.e8 .\out
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $Root = Split-Path -Parent $ScriptDir
 Set-Location $Root
 
-$BindingsLib = Join-Path $Root "engine\bindings\python\entropy8_engine"
-$CoreBuild = Join-Path $Root "engine\core\build"
-$CoreSrc = Join-Path $Root "engine\core"
+$ImageName = "entropy8:dev"
+$DockerfilePath = Join-Path $Root "docker\Dockerfile"
 
-function Test-HasLib {
-    $names = @("libentropy8.dll", "libentropy8.so", "libentropy8.so.1", "entropy8.dll")
-    foreach ($n in $names) {
-        $p = Join-Path $BindingsLib $n
-        if (Test-Path $p -PathType Leaf) { return $true }
-    }
-    return $false
+# ── Check Docker ──────────────────────────────────────────────────────────────
+$dockerCmd = Get-Command docker -ErrorAction SilentlyContinue
+if (-not $dockerCmd) {
+    Write-Host ""
+    Write-Host "ERROR: Docker not found." -ForegroundColor Red
+    Write-Host "Install Docker Desktop from https://www.docker.com/products/docker-desktop/"
+    Write-Host ""
+    exit 1
 }
 
-if (-not (Test-HasLib)) {
-    Write-Host "Engine library not found, building..."
-    if (-not (Test-Path $CoreBuild)) { New-Item -ItemType Directory -Path $CoreBuild -Force | Out-Null }
-    Push-Location $CoreBuild
-    try {
-        cmake .. -DCMAKE_BUILD_TYPE=Release
-        if ($LASTEXITCODE -ne 0) { throw "cmake failed" }
-        cmake --build .
-        if ($LASTEXITCODE -ne 0) { throw "cmake --build failed" }
-        $dll = Join-Path $CoreBuild "libentropy8.dll"
-        $so = Join-Path $CoreBuild "libentropy8.so"
-        $so1 = Join-Path $CoreBuild "libentropy8.so.1"
-        if (Test-Path $dll) { Copy-Item -Force $dll $BindingsLib }
-        elseif (Test-Path $so) { Copy-Item -Force (Join-Path $CoreBuild "libentropy8.so*") $BindingsLib }
-        elseif (Test-Path $so1) { Copy-Item -Force (Join-Path $CoreBuild "libentropy8.so*") $BindingsLib }
-        else { throw "Build finished but library was not found." }
-    } finally {
-        Pop-Location
-    }
-    Write-Host "Engine built."
+# ── Check Docker daemon is running ────────────────────────────────────────────
+$dockerInfo = docker info 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "ERROR: Docker daemon is not running." -ForegroundColor Red
+    Write-Host "Start Docker Desktop, then try again."
+    Write-Host ""
+    exit 1
 }
 
-$env:PYTHONPATH = "$Root\engine\bindings\python"
+# ── Build image if it doesn't exist ──────────────────────────────────────────
+$imageExists = docker images -q $ImageName 2>$null
+if (-not $imageExists) {
+    Write-Host "Building Docker image ($ImageName)..." -ForegroundColor Cyan
+    docker build -f $DockerfilePath -t $ImageName $Root
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Docker build failed." -ForegroundColor Red
+        exit 1
+    }
+    Write-Host "Image built." -ForegroundColor Green
+}
 
-$mainPy = Join-Path $Root "apps\cli\entropy8_cli\main.py"
-& python $mainPy @args
+# ── Prepare workspace volume ─────────────────────────────────────────────────
+# Mount current directory as /workspace so files are read/written locally.
+$WorkDir = (Get-Location).Path
+
+# ── Run ──────────────────────────────────────────────────────────────────────
+# Docker Desktop on Windows accepts native paths in -v (e.g. C:\Users\...).
+docker run --rm -v "${WorkDir}:/workspace" -w /workspace $ImageName @args
+exit $LASTEXITCODE

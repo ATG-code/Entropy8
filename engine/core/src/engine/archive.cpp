@@ -91,12 +91,14 @@ int Archive::entry(size_t index, char* path, size_t path_size, uint64_t* uncompr
 int Archive::finalize() {
 	if (mode_ != Mode::Write) return -1;
 
+	/*
+	 * Directory layout (appended after data blocks):
+	 *   [num(4)] [entries...] [dir_size(4)]
+	 * dir_size = bytes of [num(4)] + [entries...] (excludes trailing dir_size itself).
+	 * load() reads dir_size from last 4 bytes, then seeks back to read directory.
+	 */
 	int64_t dir_start = e8_seek(stream_, 0, 2); /* SEEK_END */
 	if (dir_start < 0) return -1;
-
-	/* Placeholder for dir_size (4 bytes) */
-	uint32_t zero = 0;
-	if (e8_write(stream_, &zero, 4) != 4) return -1;
 
 	uint32_t num = static_cast<uint32_t>(entries_.size());
 	if (e8_write(stream_, &num, 4) != 4) return -1;
@@ -111,32 +113,37 @@ int Archive::finalize() {
 		if (e8_write(stream_, &e.compressed_size, 4) != 4) return -1;
 	}
 
+	/* Write dir_size as trailer (last 4 bytes of file) */
 	int64_t dir_end = e8_seek(stream_, 0, 2);
 	if (dir_end < 0) return -1;
-	uint32_t dir_size = static_cast<uint32_t>(dir_end - dir_start - 4);
-	e8_seek(stream_, dir_start, 0);
+	uint32_t dir_size = static_cast<uint32_t>(dir_end - dir_start);
 	if (e8_write(stream_, &dir_size, 4) != 4) return -1;
+
+	/* Flush to ensure all data hits disk before close */
+	e8_flush(stream_);
 	return 0;
 }
 
 int Archive::load() {
 	if (mode_ != Mode::Read) return -1;
 
+	/* Verify magic at offset 0 */
 	uint8_t mag[4];
 	if (e8_seek(stream_, 0, 0) != 0 || e8_read(stream_, mag, 4) != 4) return -1;
 	if (std::memcmp(mag, MAGIC, 4) != 0) return -1;
 
+	/* Read dir_size from last 4 bytes (trailer) */
 	int64_t file_end = e8_seek(stream_, 0, 2);
-	if (file_end < 0 || file_end < 8) return -1;
+	if (file_end < 0 || file_end < 12) return -1; /* magic(4) + dir_size trailer(4) + at least num(4) */
 	e8_seek(stream_, file_end - 4, 0);
 	uint32_t dir_size;
 	if (e8_read(stream_, &dir_size, 4) != 4) return -1;
-	if (static_cast<int64_t>(dir_size) > file_end - 4) return -1;
-	e8_seek(stream_, file_end - 4 - dir_size, 0);
-	/* Block is [dir_size(4)][num(4)][entries]; skip first 4 (dir_size) */
-	uint32_t skip;
-	if (e8_read(stream_, &skip, 4) != 4) return -1;
-	(void)skip;
+	if (dir_size == 0 || static_cast<int64_t>(dir_size) > file_end - 8) return -1;
+
+	/* Seek to start of directory: [num(4)][entries...] */
+	int64_t dir_start = file_end - 4 - static_cast<int64_t>(dir_size);
+	if (dir_start < 4) return -1; /* must be after magic */
+	e8_seek(stream_, dir_start, 0);
 
 	uint32_t num;
 	if (e8_read(stream_, &num, 4) != 4) return -1;
