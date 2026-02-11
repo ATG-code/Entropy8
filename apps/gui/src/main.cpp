@@ -19,29 +19,38 @@
 
 using namespace entropy8::gui;
 
-// ── Drag-and-drop callback ───────────────────────────────────────────────────
+// ── Globals ──────────────────────────────────────────────────────────────────
 static AppState* g_state = nullptr;
 
+// ── Drag-and-drop ────────────────────────────────────────────────────────────
 static void drop_callback(GLFWwindow* /*window*/, int count, const char** paths) {
 	if (!g_state) return;
+
 	for (int i = 0; i < count; ++i) {
 		const char* path = paths[i];
 		size_t len = strlen(path);
 
-		// If it's an .e8 file, open it
+		// If dropped file is a supported archive, open the viewer
 		if (len > 3 && strcmp(path + len - 3, ".e8") == 0) {
 			OpenArchive(*g_state, path);
-		} else if (g_state->show_create_dialog) {
-			// Add to file list if create dialog is open
-			bool dup = false;
-			for (auto& f : g_state->files_to_add)
-				if (f == path) { dup = true; break; }
-			if (!dup) g_state->files_to_add.emplace_back(path);
+			g_state->show_viewer = true;
+			continue;
 		}
+
+		// Otherwise add to compression queue
+		bool dup = false;
+		for (auto& f : g_state->files_to_add)
+			if (f == path) { dup = true; break; }
+		if (!dup) g_state->files_to_add.push_back(path);
+	}
+
+	// Auto-create archive when files are dropped
+	if (!g_state->files_to_add.empty()) {
+		CreateArchive(*g_state);
+		g_state->files_to_add.clear();
 	}
 }
 
-// ── Error callback ───────────────────────────────────────────────────────────
 static void glfw_error_callback(int error, const char* description) {
 	fprintf(stderr, "GLFW Error %d: %s\n", error, description);
 }
@@ -62,73 +71,66 @@ int main(int, char**) {
 #ifdef __APPLE__
 	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
 #endif
-	glfwWindowHint(GLFW_SAMPLES, 4); // MSAA
+	glfwWindowHint(GLFW_SAMPLES, 4);
+	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE); // Fixed size like Keka
 
-	GLFWwindow* window = glfwCreateWindow(960, 620, "Entropy8", nullptr, nullptr);
+	// Compact window size matching Keka style
+	GLFWwindow* window = glfwCreateWindow(380, 520, "Entropy8", nullptr, nullptr);
 	if (!window) {
 		glfwTerminate();
 		return 1;
 	}
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1); // vsync
+	glfwSwapInterval(1);
 
-	// Setup Dear ImGui context
+	// Setup Dear ImGui
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO& io = ImGui::GetIO();
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+	io.IniFilename = nullptr; // No imgui.ini for compact app
 
-	// Fonts – slightly larger for a clean look
-	io.Fonts->AddFontDefault();
-	// If you want a custom font, add it here:
-	// io.Fonts->AddFontFromFileTTF("path/to/font.ttf", 16.0f);
+	// Font: slightly larger for readability
+	ImFontConfig fontCfg;
+	fontCfg.OversampleH = 2;
+	fontCfg.OversampleV = 2;
+	io.Fonts->AddFontDefault(&fontCfg);
 
-	// Apply dark theme
 	ApplyDarkTheme();
 
-	// Setup Platform/Renderer backends
 	ImGui_ImplGlfw_InitForOpenGL(window, true);
 	ImGui_ImplOpenGL3_Init("#version 330 core");
 
-	// Drag-and-drop
+	// State
 	AppState state;
 	g_state = &state;
 	glfwSetDropCallback(window, drop_callback);
 
-	// Handle command-line: open archive if passed as argument
-	// (Not applicable for WinMain, would need __argc/__argv on Windows)
-
-	// ── Main loop ────────────────────────────────────────────────────────
-	ImVec4 clear_color = ImVec4(0.09f, 0.09f, 0.10f, 1.00f);
+	ImVec4 clear = ImVec4(0.09f, 0.09f, 0.10f, 1.00f);
 
 	while (!glfwWindowShouldClose(window)) {
 		glfwPollEvents();
 
-		// Start frame
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		// Render application UI
 		RenderUI(state);
 
-		// Render
 		ImGui::Render();
-		int display_w, display_h;
-		glfwGetFramebufferSize(window, &display_w, &display_h);
-		glViewport(0, 0, display_w, display_h);
-		glClearColor(clear_color.x, clear_color.y, clear_color.z, clear_color.w);
+		int dw, dh;
+		glfwGetFramebufferSize(window, &dw, &dh);
+		glViewport(0, 0, dw, dh);
+		glClearColor(clear.x, clear.y, clear.z, clear.w);
 		glClear(GL_COLOR_BUFFER_BIT);
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		glfwSwapBuffers(window);
 	}
 
-	// Cleanup
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
-
 	glfwDestroyWindow(window);
 	glfwTerminate();
 	return 0;

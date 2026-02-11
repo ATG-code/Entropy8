@@ -146,9 +146,29 @@ bool CreateArchive(AppState& state) {
 		return false;
 	}
 
-	FILE* out_fp = fopen(state.output_path, "wb");
+	// Auto-generate output path from the first file's directory + format extension
+	const auto& fmt = kFormats[state.format_index];
+	std::string first = state.files_to_add[0];
+	auto slash = first.find_last_of("/\\");
+	std::string dir = (slash != std::string::npos) ? first.substr(0, slash) : ".";
+	auto dot = first.find_last_of('.');
+	std::string base = first;
+	if (dot != std::string::npos && dot > (slash != std::string::npos ? slash : 0))
+		base = first.substr(0, dot);
+	if (slash != std::string::npos)
+		base = base.substr(slash + 1);
+	std::string output_path = dir + "/" + base + fmt.extension;
+
+	// Only E8 format is supported for now
+	if (!fmt.supported) {
+		state.status_msg = std::string(fmt.name) + " format is not yet supported.";
+		state.status_error = true;
+		return false;
+	}
+
+	FILE* out_fp = fopen(output_path.c_str(), "wb");
 	if (!out_fp) {
-		state.status_msg = "Cannot create: " + std::string(state.output_path);
+		state.status_msg = "Cannot create: " + output_path;
 		state.status_error = true;
 		return false;
 	}
@@ -170,24 +190,22 @@ bool CreateArchive(AppState& state) {
 
 		// Extract filename from path
 		std::string name = fpath;
-		auto slash = name.find_last_of("/\\");
-		if (slash != std::string::npos) name = name.substr(slash + 1);
+		auto sl = name.find_last_of("/\\");
+		if (sl != std::string::npos) name = name.substr(sl + 1);
 
 		int r = e8_archive_add(ar, name.c_str(), &in_stream, nullptr, nullptr);
-		// in_stream close callback closes in_fp
 		e8_stream_destroy(&in_stream);
 		if (r == 0) added++;
 	}
 
 	e8_archive_close(ar);
-	// Closes + finalizes + flushes
 
-	state.status_msg = "Created " + std::string(state.output_path) + " with " +
-	                   std::to_string(added) + " file(s).";
+	state.status_msg = "Created " + output_path + " (" + std::to_string(added) + " files)";
 	state.status_error = false;
 
 	// Auto-open the newly created archive
-	OpenArchive(state, state.output_path);
+	OpenArchive(state, output_path);
+	state.show_viewer = true;
 	return true;
 }
 

@@ -1,329 +1,403 @@
 #include "ui.hpp"
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <tinyfiledialogs.h>
 #include <algorithm>
 #include <cstring>
+#include <cstdio>
 
 namespace entropy8::gui {
 
-// ── Icons (Unicode) ──────────────────────────────────────────────────────────
-// Using simple ASCII art / text since we don't bundle icon fonts.
-static const char* ICON_FOLDER   = "[D]";
-static const char* ICON_FILE     = " - ";
+// ── Constants ────────────────────────────────────────────────────────────────
+static const char* kMethodLabels[] = {"Store", "Fast", "Normal", "Slow"};
+static constexpr int kMethodCount = 4;
+static constexpr float kLabelCol = 90.0f;  // Left column for labels
 
-// ── Codec names for combo ────────────────────────────────────────────────────
-static const char* kCodecNames[] = {"Store", "LZ4", "LZMA", "Zstd"};
-static const int kCodecCount = 4;
+// ── Helper: draw a colored format badge ──────────────────────────────────────
+static void DrawFormatBadge(const ArchiveFormat& fmt, float height = 28.0f) {
+	ImVec4 col = ImGui::ColorConvertU32ToFloat4(fmt.color);
+	ImVec4 colDark = ImVec4(col.x * 0.6f, col.y * 0.6f, col.z * 0.6f, 1.0f);
 
-static const char* kMethodNames[] = {"Store", "Fast", "Normal", "Best"};
-static const int kMethodCount = 4;
+	ImGui::PushStyleColor(ImGuiCol_Button, col);
+	ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(col.x * 1.15f, col.y * 1.15f, col.z * 1.15f, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_ButtonActive, colDark);
+	ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
 
-// ── Color helpers ────────────────────────────────────────────────────────────
-static ImVec4 CodecColor(int idx) {
-	switch (idx) {
-		case 0: return ImVec4(0.55f, 0.55f, 0.58f, 1.0f); // Store: gray
-		case 1: return ImVec4(0.40f, 0.80f, 0.40f, 1.0f); // LZ4: green
-		case 2: return ImVec4(0.90f, 0.65f, 0.20f, 1.0f); // LZMA: orange
-		case 3: return ImVec4(0.25f, 0.56f, 0.96f, 1.0f); // Zstd: blue
-		default: return ImVec4(1, 1, 1, 1);
-	}
+	char label[32];
+	snprintf(label, sizeof(label), "  %s  ", fmt.name);
+	ImGui::Button(label, ImVec2(0, height));
+
+	ImGui::PopStyleVar();
+	ImGui::PopStyleColor(3);
 }
 
-// ── Create Archive Dialog ────────────────────────────────────────────────────
-static void DrawCreateDialog(AppState& state) {
-	if (!state.show_create_dialog) return;
+// ── Format selection popup ───────────────────────────────────────────────────
+static void DrawFormatPopup(AppState& state) {
+	if (!state.show_format_popup) return;
 
-	ImGui::SetNextWindowSize(ImVec2(520, 560), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowPos(
-		ImVec2(ImGui::GetIO().DisplaySize.x * 0.5f, ImGui::GetIO().DisplaySize.y * 0.5f),
-		ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f)
-	);
+	ImGui::SetNextWindowSize(ImVec2(200, 0));
 
-	if (ImGui::Begin("Create Archive", &state.show_create_dialog,
-			ImGuiWindowFlags_NoCollapse)) {
+	if (ImGui::Begin("##format_popup", &state.show_format_popup,
+			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar)) {
 
-		// ── Output path ──────────────────────────────────────────────────
-		ImGui::Text("Output:");
-		ImGui::SameLine();
-		ImGui::SetNextItemWidth(-80);
-		ImGui::InputText("##out", state.output_path, sizeof(state.output_path));
-		ImGui::SameLine();
-		if (ImGui::Button("Browse##out")) {
-			const char* filters[] = {"*.e8"};
-			const char* sel = tinyfd_saveFileDialog(
-				"Save Archive", state.output_path, 1, filters, "Entropy8 Archive (*.e8)"
-			);
-			if (sel) {
-				strncpy(state.output_path, sel, sizeof(state.output_path) - 1);
-				state.output_path[sizeof(state.output_path) - 1] = '\0';
-			}
-		}
+		for (int i = 0; i < kFormatCount; ++i) {
+			const auto& fmt = kFormats[i];
+			bool selected = (state.format_index == i);
 
-		ImGui::Separator();
+			// Colored dot
+			ImVec4 col = ImGui::ColorConvertU32ToFloat4(fmt.color);
+			ImGui::PushStyleColor(ImGuiCol_Text, col);
+			ImGui::Text("*");
+			ImGui::PopStyleColor();
+			ImGui::SameLine();
 
-		// ── Codec selection (color badges like screenshot) ───────────────
-		ImGui::Text("Codec:");
-		ImGui::SameLine(100);
-
-		for (int i = 0; i < kCodecCount; ++i) {
-			if (i > 0) ImGui::SameLine();
-			bool selected = (state.codec_index == i);
-
-			ImVec4 col = CodecColor(i);
+			// Selectable name
 			if (selected) {
-				ImGui::PushStyleColor(ImGuiCol_Button, col);
-				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, col);
-				ImGui::PushStyleColor(ImGuiCol_ButtonActive, col);
 				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
+			} else if (!fmt.supported) {
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
 			} else {
-				ImVec4 dim = ImVec4(col.x * 0.3f, col.y * 0.3f, col.z * 0.3f, 1.0f);
-				ImGui::PushStyleColor(ImGuiCol_Button, dim);
-				ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-					ImVec4(col.x * 0.5f, col.y * 0.5f, col.z * 0.5f, 1.0f));
-				ImGui::PushStyleColor(ImGuiCol_ButtonActive, col);
-				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.7f, 0.7f, 0.7f, 1.0f));
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.85f, 0.85f, 0.87f, 1.0f));
 			}
 
-			char label[32];
-			snprintf(label, sizeof(label), " %s ##codec%d", kCodecNames[i], i);
-			if (ImGui::Button(label, ImVec2(80, 0))) {
-				state.codec_index = i;
-				if (i == 0) state.method_index = 0; // Store -> Store method
+			char selLabel[64];
+			snprintf(selLabel, sizeof(selLabel), "%s##fmt%d", fmt.name, i);
+			if (ImGui::Selectable(selLabel, selected)) {
+				state.format_index = i;
+				state.show_format_popup = false;
 			}
-			ImGui::PopStyleColor(4);
-		}
+			ImGui::PopStyleColor();
 
-		ImGui::Spacing();
-
-		// ── Method slider ────────────────────────────────────────────────
-		bool is_store = (state.codec_index == 0);
-		if (is_store) ImGui::BeginDisabled();
-
-		ImGui::Text("Method:");
-		ImGui::SameLine(100);
-		ImGui::SetNextItemWidth(280);
-		ImGui::SliderInt("##method", &state.method_index, 0, kMethodCount - 1, kMethodNames[state.method_index]);
-
-		// Draw labels below slider
-		{
-			float slider_x = 100;
-			float slider_w = 280;
-			ImVec2 cur = ImGui::GetCursorPos();
-			for (int i = 0; i < kMethodCount; ++i) {
-				float frac = static_cast<float>(i) / static_cast<float>(kMethodCount - 1);
-				float x = slider_x + frac * slider_w;
-				ImGui::SetCursorPos(ImVec2(x - 15, cur.y));
-				ImGui::TextDisabled("%s", kMethodNames[i]);
-			}
-			ImGui::SetCursorPos(ImVec2(cur.x, cur.y + 20));
-		}
-
-		if (is_store) ImGui::EndDisabled();
-
-		ImGui::Spacing();
-		ImGui::Separator();
-		ImGui::Spacing();
-
-		// ── Files to add ─────────────────────────────────────────────────
-		ImGui::Text("Files to add:");
-		ImGui::SameLine(ImGui::GetContentRegionAvail().x - 60);
-		if (ImGui::Button("+ Add")) {
-			const char* multi = tinyfd_openFileDialog(
-				"Select Files", "", 0, nullptr, nullptr, 1 /* multi */
-			);
-			if (multi) {
-				// tinyfiledialogs returns pipe-separated paths for multi-select
-				std::string s(multi);
-				size_t pos = 0;
-				while (pos < s.size()) {
-					size_t pipe = s.find('|', pos);
-					std::string part = (pipe == std::string::npos) ? s.substr(pos) : s.substr(pos, pipe - pos);
-					if (!part.empty()) {
-						// Avoid duplicates
-						bool dup = false;
-						for (auto& f : state.files_to_add) {
-							if (f == part) { dup = true; break; }
-						}
-						if (!dup) state.files_to_add.push_back(part);
-					}
-					if (pipe == std::string::npos) break;
-					pos = pipe + 1;
-				}
+			// Show checkmark for selected
+			if (selected) {
+				ImGui::SameLine(170);
+				ImGui::TextColored(ImVec4(0.3f, 0.8f, 0.5f, 1.0f), "ok");
 			}
 		}
-
-		ImGui::BeginChild("##filelist", ImVec2(0, 180), ImGuiChildFlags_Borders);
-		int remove_idx = -1;
-		for (int i = 0; i < static_cast<int>(state.files_to_add.size()); ++i) {
-			ImGui::PushID(i);
-			// Just show filename
-			std::string& full = state.files_to_add[i];
-			auto slash = full.find_last_of("/\\");
-			const char* name = (slash != std::string::npos) ? full.c_str() + slash + 1 : full.c_str();
-
-			ImGui::TextColored(ImVec4(0.7f, 0.8f, 1.0f, 1.0f), "%s", name);
-			ImGui::SameLine(ImGui::GetContentRegionAvail().x - 10);
-			if (ImGui::SmallButton("X")) remove_idx = i;
-
-			// Tooltip with full path
-			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) {
-				ImGui::SetTooltip("%s", full.c_str());
-			}
-			ImGui::PopID();
-		}
-		if (remove_idx >= 0) {
-			state.files_to_add.erase(state.files_to_add.begin() + remove_idx);
-		}
-		if (state.files_to_add.empty()) {
-			ImGui::TextDisabled("  Drag & drop or click '+ Add' to select files.");
-		}
-		ImGui::EndChild();
-
-		ImGui::Spacing();
-
-		// ── Create button ────────────────────────────────────────────────
-		float bw = 140;
-		ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - bw) * 0.5f + ImGui::GetCursorPosX());
-		bool can_create = !state.files_to_add.empty();
-		if (!can_create) ImGui::BeginDisabled();
-		if (ImGui::Button("Create Archive", ImVec2(bw, 36))) {
-			CreateArchive(state);
-			state.show_create_dialog = false;
-		}
-		if (!can_create) ImGui::EndDisabled();
 	}
 	ImGui::End();
 }
 
-// ── Main toolbar ─────────────────────────────────────────────────────────────
-static void DrawToolbar(AppState& state) {
-	float h = 44;
-	ImGui::BeginChild("##toolbar", ImVec2(0, h), ImGuiChildFlags_None);
-	ImGui::SetCursorPos(ImVec2(8, 6));
+// ── Tick-mark slider for Method ──────────────────────────────────────────────
+static bool MethodSlider(const char* id, int* value, int v_min, int v_max) {
+	bool changed = false;
 
-	if (ImGui::Button("New Archive", ImVec2(120, 30))) {
-		state.show_create_dialog = true;
-		state.files_to_add.clear();
-	}
-	ImGui::SameLine();
-	if (ImGui::Button("Open Archive", ImVec2(120, 30))) {
-		const char* filters[] = {"*.e8"};
-		const char* sel = tinyfd_openFileDialog(
-			"Open Archive", "", 1, filters, "Entropy8 Archive (*.e8)", 0
-		);
-		if (sel) OpenArchive(state, sel);
-	}
-	ImGui::SameLine();
+	float avail = ImGui::GetContentRegionAvail().x;
+	ImGui::SetNextItemWidth(avail);
+	changed = ImGui::SliderInt(id, value, v_min, v_max, "");
 
-	bool has_archive = state.archive_open;
-	if (!has_archive) ImGui::BeginDisabled();
-	if (ImGui::Button("Extract All", ImVec2(120, 30))) {
-		const char* dir = tinyfd_selectFolderDialog("Extract To", "");
-		if (dir) ExtractAll(state, dir);
-	}
-	if (!has_archive) ImGui::EndDisabled();
+	// Draw tick labels below
+	ImVec2 cursor = ImGui::GetCursorPos();
+	float pad = ImGui::GetStyle().FramePadding.x;
+	float sliderW = avail - pad * 2;
 
-	// Right-aligned info
-	if (state.archive_open) {
-		std::string info = state.archive_path + "  |  " +
-			std::to_string(state.entries.size()) + " file(s)  |  " +
-			FormatSize(state.total_uncompressed);
-		float tw = ImGui::CalcTextSize(info.c_str()).x;
-		ImGui::SameLine(ImGui::GetContentRegionAvail().x - tw + ImGui::GetCursorPosX() - 8);
-		ImGui::SetCursorPosY(12);
-		ImGui::TextDisabled("%s", info.c_str());
-	}
+	for (int i = v_min; i <= v_max; ++i) {
+		float frac = static_cast<float>(i - v_min) / static_cast<float>(v_max - v_min);
+		float textW = ImGui::CalcTextSize(kMethodLabels[i]).x;
+		float x;
+		if (i == v_min) x = pad;
+		else if (i == v_max) x = avail - textW;
+		else x = pad + frac * sliderW - textW * 0.5f;
 
-	ImGui::EndChild();
-	ImGui::Separator();
+		ImGui::SetCursorPos(ImVec2(cursor.x + x, cursor.y));
+		if (i == *value)
+			ImGui::TextColored(ImVec4(0.9f, 0.9f, 0.92f, 1.0f), "%s", kMethodLabels[i]);
+		else
+			ImGui::TextDisabled("%s", kMethodLabels[i]);
+
+		if (i < v_max) ImGui::SameLine();
+	}
+	ImGui::SetCursorPos(ImVec2(cursor.x, cursor.y + ImGui::GetTextLineHeight() + 4));
+
+	return changed;
 }
 
-// ── File entry table ─────────────────────────────────────────────────────────
-static void DrawTable(AppState& state) {
-	if (!state.archive_open) {
-		// Empty state
-		float avail_h = ImGui::GetContentRegionAvail().y;
-		ImGui::SetCursorPosY(ImGui::GetCursorPosY() + avail_h * 0.35f);
-		const char* msg = "No archive open.\n\nCreate a new archive or open an existing .e8 file.";
-		float tw = ImGui::CalcTextSize(msg).x;
-		ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - tw) * 0.5f);
-		ImGui::TextDisabled("%s", msg);
-		return;
-	}
-
-	const ImGuiTableFlags tflags =
-		ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg |
-		ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY |
-		ImGuiTableFlags_Sortable | ImGuiTableFlags_SizingStretchProp;
-
-	if (ImGui::BeginTable("##entries", 4, tflags)) {
-		ImGui::TableSetupColumn("Name",       ImGuiTableColumnFlags_DefaultSort, 3.0f);
-		ImGui::TableSetupColumn("Size",        ImGuiTableColumnFlags_None, 1.0f);
-		ImGui::TableSetupColumn("Compressed",  ImGuiTableColumnFlags_None, 1.0f);
-		ImGui::TableSetupColumn("Codec",       ImGuiTableColumnFlags_None, 0.6f);
-		ImGui::TableSetupScrollFreeze(0, 1);
-		ImGui::TableHeadersRow();
-
-		for (auto& e : state.entries) {
-			ImGui::TableNextRow();
-
-			// Name
-			ImGui::TableNextColumn();
-			ImGui::TextColored(ImVec4(0.7f, 0.82f, 1.0f, 1.0f), "%s %s", ICON_FILE, e.path.c_str());
-
-			// Size
-			ImGui::TableNextColumn();
-			ImGui::Text("%s", FormatSize(e.uncompressed_size).c_str());
-
-			// Compressed
-			ImGui::TableNextColumn();
-			ImGui::Text("%s", FormatSize(e.compressed_size).c_str());
-
-			// Codec
-			ImGui::TableNextColumn();
-			ImGui::TextColored(CodecColor(e.codec_id), "%s", e.codec_name());
-		}
-
-		ImGui::EndTable();
-	}
-}
-
-// ── Status bar ───────────────────────────────────────────────────────────────
-static void DrawStatusBar(AppState& state) {
-	ImGui::Separator();
-	ImGui::BeginChild("##status", ImVec2(0, 28), ImGuiChildFlags_None);
-	ImGui::SetCursorPos(ImVec2(10, 5));
-
-	if (state.status_error)
-		ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", state.status_msg.c_str());
-	else
-		ImGui::TextColored(ImVec4(0.55f, 0.75f, 0.55f, 1.0f), "%s", state.status_msg.c_str());
-
-	ImGui::EndChild();
-}
-
-// ── Public entry point ───────────────────────────────────────────────────────
-void RenderUI(AppState& state) {
-	// Full-screen window
+// ── Main settings panel (Keka-style compact window) ──────────────────────────
+static void DrawSettingsPanel(AppState& state) {
 	const ImGuiViewport* vp = ImGui::GetMainViewport();
 	ImGui::SetNextWindowPos(vp->WorkPos);
 	ImGui::SetNextWindowSize(vp->WorkSize);
 
-	ImGuiWindowFlags wflags =
+	ImGuiWindowFlags wf =
 		ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
 		ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-		ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoNavFocus;
+		ImGuiWindowFlags_NoBringToFrontOnFocus;
 
-	ImGui::Begin("##main", nullptr, wflags);
+	ImGui::Begin("##main", nullptr, wf);
 
-	DrawToolbar(state);
-	DrawTable(state);
-	DrawStatusBar(state);
+	// ═══════════════════════════════════════════════════════════════════════
+	// Top: Format badge (right-aligned) with dropdown
+	// ═══════════════════════════════════════════════════════════════════════
+	{
+		const auto& fmt = kFormats[state.format_index];
+		float badgeW = ImGui::CalcTextSize(fmt.name).x + 32;
+		ImGui::SetCursorPosX(ImGui::GetContentRegionAvail().x - badgeW + ImGui::GetCursorPosX());
+
+		// Badge as a button that opens the format popup
+		ImVec4 col = ImGui::ColorConvertU32ToFloat4(fmt.color);
+		ImGui::PushStyleColor(ImGuiCol_Button, col);
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(col.x*1.15f, col.y*1.15f, col.z*1.15f, 1.0f));
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(col.x*0.7f, col.y*0.7f, col.z*0.7f, 1.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 6.0f);
+		ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
+
+		char badgeLbl[32];
+		snprintf(badgeLbl, sizeof(badgeLbl), "  %s  ##badge", fmt.name);
+		if (ImGui::Button(badgeLbl, ImVec2(0, 30))) {
+			state.show_format_popup = !state.show_format_popup;
+		}
+
+		ImGui::PopStyleColor(4);
+		ImGui::PopStyleVar();
+	}
+
+	ImGui::Spacing();
+	ImGui::Spacing();
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// Method slider
+	// ═══════════════════════════════════════════════════════════════════════
+	{
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextDisabled("Method:");
+		ImGui::SameLine(kLabelCol);
+
+		ImGui::PushItemWidth(ImGui::GetContentRegionAvail().x);
+		MethodSlider("##method", &state.method_index, 0, kMethodCount - 1);
+		ImGui::PopItemWidth();
+	}
+
+	ImGui::Spacing();
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// Split field
+	// ═══════════════════════════════════════════════════════════════════════
+	{
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextDisabled("Split:");
+		ImGui::SameLine(kLabelCol);
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x);
+		ImGui::InputTextWithHint("##split", "Example: 5 MB", state.split_buf, sizeof(state.split_buf));
+	}
+
+	ImGui::Spacing();
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// Password
+	// ═══════════════════════════════════════════════════════════════════════
+	{
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextDisabled("Password:");
+		ImGui::SameLine(kLabelCol);
+
+		float eyeW = 30;
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - eyeW - 6);
+		ImGuiInputTextFlags flags = state.show_password ? 0 : ImGuiInputTextFlags_Password;
+		ImGui::InputText("##pw", state.password, sizeof(state.password), flags);
+		ImGui::SameLine();
+		if (ImGui::Button(state.show_password ? "o##epw" : "*##epw", ImVec2(eyeW, 0))) {
+			state.show_password = !state.show_password;
+		}
+	}
+
+	{
+		ImGui::AlignTextToFramePadding();
+		ImGui::TextDisabled("Repeat:");
+		ImGui::SameLine(kLabelCol);
+
+		float eyeW = 30;
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - eyeW - 6);
+		ImGuiInputTextFlags flags = state.show_password_repeat ? 0 : ImGuiInputTextFlags_Password;
+		ImGui::InputText("##pw2", state.password_repeat, sizeof(state.password_repeat), flags);
+		ImGui::SameLine();
+		if (ImGui::Button(state.show_password_repeat ? "o##epw2" : "*##epw2", ImVec2(eyeW, 0))) {
+			state.show_password_repeat = !state.show_password_repeat;
+		}
+	}
+
+	ImGui::Spacing();
+	ImGui::Spacing();
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// Checkboxes - group 1
+	// ═══════════════════════════════════════════════════════════════════════
+	ImGui::Checkbox("Encrypt filenames", &state.opt_encrypt_filenames);
+	ImGui::Checkbox("Solid archive", &state.opt_solid_archive);
+	ImGui::Checkbox("Self-extracting archive for Windows", &state.opt_self_extracting);
+
+	ImGui::Spacing();
+	ImGui::Separator();
+	ImGui::Spacing();
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// Checkboxes - group 2
+	// ═══════════════════════════════════════════════════════════════════════
+	ImGui::Checkbox("Verify compression integrity", &state.opt_verify_integrity);
+	ImGui::Checkbox("Delete file(s) after compression", &state.opt_delete_after);
+	ImGui::Checkbox("Archive items separately", &state.opt_archive_separately);
+
+	ImGui::Spacing();
+	ImGui::Spacing();
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// Status message at the bottom
+	// ═══════════════════════════════════════════════════════════════════════
+	if (!state.status_msg.empty()) {
+		ImGui::Separator();
+		ImGui::Spacing();
+		if (state.status_error)
+			ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.4f, 1.0f), "%s", state.status_msg.c_str());
+		else
+			ImGui::TextColored(ImVec4(0.4f, 0.8f, 0.5f, 1.0f), "%s", state.status_msg.c_str());
+	}
+
+	// ═══════════════════════════════════════════════════════════════════════
+	// Drop zone hint (at very bottom, centered)
+	// ═══════════════════════════════════════════════════════════════════════
+	{
+		float avail = ImGui::GetContentRegionAvail().y;
+		if (avail > 40) {
+			ImGui::SetCursorPosY(ImGui::GetCursorPosY() + avail - 30);
+			const char* hint = "Drop files here to compress";
+			float tw = ImGui::CalcTextSize(hint).x;
+			ImGui::SetCursorPosX((ImGui::GetContentRegionAvail().x - tw) * 0.5f + ImGui::GetCursorPosX());
+			ImGui::TextDisabled("%s", hint);
+		}
+	}
 
 	ImGui::End();
+}
 
-	// Floating dialogs
-	DrawCreateDialog(state);
+// ── Format selection popup (floating window) ─────────────────────────────────
+static void DrawFormatSelector(AppState& state) {
+	if (!state.show_format_popup) return;
+
+	// Position next to the badge button
+	const ImGuiViewport* vp = ImGui::GetMainViewport();
+	float popW = 180;
+	float popH = kFormatCount * 28.0f + 16;
+	ImGui::SetNextWindowPos(
+		ImVec2(vp->WorkPos.x + vp->WorkSize.x - popW - 10, vp->WorkPos.y + 50),
+		ImGuiCond_Always
+	);
+	ImGui::SetNextWindowSize(ImVec2(popW, popH));
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 10.0f);
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8, 8));
+	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.13f, 0.13f, 0.15f, 0.97f));
+	ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.3f, 0.3f, 0.32f, 0.6f));
+
+	if (ImGui::Begin("##fmtsel", &state.show_format_popup,
+			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+			ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar)) {
+
+		for (int i = 0; i < kFormatCount; ++i) {
+			const auto& fmt = kFormats[i];
+			bool selected = (state.format_index == i);
+
+			ImGui::PushID(i);
+
+			// Row: checkmark | color dot | name
+			if (selected) {
+				ImGui::TextColored(ImVec4(0.3f, 0.85f, 0.5f, 1.0f), " ok");
+			} else {
+				ImGui::TextDisabled("   ");
+			}
+			ImGui::SameLine(35);
+
+			// Colored square
+			ImVec4 col = ImGui::ColorConvertU32ToFloat4(fmt.color);
+			ImVec2 p = ImGui::GetCursorScreenPos();
+			ImGui::GetWindowDrawList()->AddRectFilled(
+				p, ImVec2(p.x + 14, p.y + 14), fmt.color, 3.0f
+			);
+			ImGui::Dummy(ImVec2(14, 14));
+			ImGui::SameLine();
+
+			// Name
+			if (!fmt.supported && !selected) {
+				ImGui::TextDisabled("%s", fmt.name);
+			} else {
+				ImGui::Text("%s", fmt.name);
+			}
+
+			// Make the whole row clickable
+			ImVec2 rowMin = ImVec2(ImGui::GetWindowPos().x, p.y - 2);
+			ImVec2 rowMax = ImVec2(ImGui::GetWindowPos().x + popW, p.y + 20);
+			if (ImGui::IsMouseHoveringRect(rowMin, rowMax) && ImGui::IsMouseClicked(0)) {
+				state.format_index = i;
+				state.show_format_popup = false;
+			}
+
+			ImGui::PopID();
+		}
+	}
+	ImGui::End();
+
+	ImGui::PopStyleColor(2);
+	ImGui::PopStyleVar(2);
+
+	// Close on click outside
+	if (ImGui::IsMouseClicked(0) && !ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow)) {
+		state.show_format_popup = false;
+	}
+}
+
+// ── Archive viewer window ────────────────────────────────────────────────────
+static void DrawViewer(AppState& state) {
+	if (!state.show_viewer || !state.archive_open) return;
+
+	ImGui::SetNextWindowSize(ImVec2(540, 380), ImGuiCond_FirstUseEver);
+
+	char title[256];
+	snprintf(title, sizeof(title), "Archive: %s###viewer", state.archive_path.c_str());
+
+	if (ImGui::Begin(title, &state.show_viewer)) {
+		// Toolbar
+		if (ImGui::Button("Extract All")) {
+			const char* dir = tinyfd_selectFolderDialog("Extract To", "");
+			if (dir) ExtractAll(state, dir);
+		}
+		ImGui::SameLine();
+		ImGui::TextDisabled("%zu entries  |  %s",
+			state.entries.size(), FormatSize(state.total_uncompressed).c_str());
+
+		ImGui::Separator();
+
+		// Table
+		const ImGuiTableFlags tf =
+			ImGuiTableFlags_Resizable | ImGuiTableFlags_RowBg |
+			ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY |
+			ImGuiTableFlags_SizingStretchProp;
+
+		if (ImGui::BeginTable("##entries", 3, tf)) {
+			ImGui::TableSetupColumn("Name", 0, 3.0f);
+			ImGui::TableSetupColumn("Size", 0, 1.0f);
+			ImGui::TableSetupColumn("Codec", 0, 0.8f);
+			ImGui::TableSetupScrollFreeze(0, 1);
+			ImGui::TableHeadersRow();
+
+			for (auto& e : state.entries) {
+				ImGui::TableNextRow();
+				ImGui::TableNextColumn();
+				ImGui::Text("%s", e.path.c_str());
+				ImGui::TableNextColumn();
+				ImGui::Text("%s", FormatSize(e.uncompressed_size).c_str());
+				ImGui::TableNextColumn();
+				ImGui::TextDisabled("%s", e.codec_name());
+			}
+			ImGui::EndTable();
+		}
+	}
+	ImGui::End();
+}
+
+// ── Public entry point ───────────────────────────────────────────────────────
+void RenderUI(AppState& state) {
+	DrawSettingsPanel(state);
+	DrawFormatSelector(state);
+	DrawViewer(state);
 }
 
 } // namespace entropy8::gui
