@@ -4,11 +4,68 @@ project(entropy8_core LANGUAGES C CXX)
 set(ENTROPY8_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 set(ENTROPY8_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(LZ4  REQUIRED IMPORTED_TARGET liblz4)
-pkg_check_modules(LZMA REQUIRED IMPORTED_TARGET liblzma)
-pkg_check_modules(ZSTD REQUIRED IMPORTED_TARGET libzstd)
+include(FetchContent)
 
+# ── LZ4 ──────────────────────────────────────────────────────────────────────
+find_package(lz4 CONFIG QUIET)
+if(NOT lz4_FOUND)
+  message(STATUS "LZ4 not found – fetching from source")
+  FetchContent_Declare(lz4
+    GIT_REPOSITORY https://github.com/lz4/lz4.git
+    GIT_TAG        v1.10.0
+    GIT_SHALLOW    ON
+    SOURCE_SUBDIR  build/cmake
+  )
+  set(LZ4_BUILD_CLI OFF CACHE BOOL "" FORCE)
+  set(LZ4_BUILD_LEGACY_LZ4C OFF CACHE BOOL "" FORCE)
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  set(BUILD_STATIC_LIBS ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(lz4)
+  # lz4 cmake creates target: lz4_static
+endif()
+
+# ── Zstd ─────────────────────────────────────────────────────────────────────
+find_package(zstd CONFIG QUIET)
+if(NOT zstd_FOUND)
+  message(STATUS "Zstd not found – fetching from source")
+  FetchContent_Declare(zstd
+    GIT_REPOSITORY https://github.com/facebook/zstd.git
+    GIT_TAG        v1.5.6
+    GIT_SHALLOW    ON
+    SOURCE_SUBDIR  build/cmake
+  )
+  set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+  set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(zstd)
+  # zstd cmake creates target: libzstd_static
+endif()
+
+# ── XZ / liblzma ────────────────────────────────────────────────────────────
+find_package(liblzma CONFIG QUIET)
+if(NOT liblzma_FOUND)
+  find_package(LibLZMA QUIET)
+endif()
+if(NOT liblzma_FOUND AND NOT LIBLZMA_FOUND)
+  message(STATUS "liblzma not found – fetching from source")
+  FetchContent_Declare(xz
+    GIT_REPOSITORY https://github.com/tukaani-project/xz.git
+    GIT_TAG        v5.6.4
+    GIT_SHALLOW    ON
+  )
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  set(XZ_BUILD_XZ OFF CACHE BOOL "" FORCE)
+  set(XZ_BUILD_XZDEC OFF CACHE BOOL "" FORCE)
+  set(XZ_BUILD_LZMADEC OFF CACHE BOOL "" FORCE)
+  set(XZ_BUILD_LZMAINFO OFF CACHE BOOL "" FORCE)
+  set(CREATE_XZ_SYMLINKS OFF CACHE BOOL "" FORCE)
+  set(CREATE_LZMA_SYMLINKS OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(xz)
+  # xz cmake creates target: liblzma
+endif()
+
+# ── entropy8 shared library ─────────────────────────────────────────────────
 add_library(entropy8 SHARED
   ${ENTROPY8_SRC_DIR}/io.c
   ${ENTROPY8_SRC_DIR}/entropy8_api.c
@@ -27,7 +84,39 @@ target_include_directories(entropy8
 )
 
 target_compile_features(entropy8 PUBLIC c_std_11 PRIVATE cxx_std_17)
-target_link_libraries(entropy8 PRIVATE PkgConfig::LZ4 PkgConfig::LZMA PkgConfig::ZSTD)
+
+# ── Link compression libraries ───────────────────────────────────────────────
+# LZ4
+if(TARGET lz4::lz4)
+  target_link_libraries(entropy8 PRIVATE lz4::lz4)
+elseif(TARGET lz4_static)
+  target_link_libraries(entropy8 PRIVATE lz4_static)
+  target_include_directories(entropy8 PRIVATE ${lz4_SOURCE_DIR}/lib)
+endif()
+
+# Zstd
+if(TARGET zstd::libzstd_shared)
+  target_link_libraries(entropy8 PRIVATE zstd::libzstd_shared)
+elseif(TARGET zstd::libzstd_static)
+  target_link_libraries(entropy8 PRIVATE zstd::libzstd_static)
+elseif(TARGET libzstd_static)
+  target_link_libraries(entropy8 PRIVATE libzstd_static)
+  target_include_directories(entropy8 PRIVATE ${zstd_SOURCE_DIR}/lib)
+endif()
+
+# liblzma
+if(TARGET liblzma::liblzma)
+  target_link_libraries(entropy8 PRIVATE liblzma::liblzma)
+elseif(TARGET liblzma)
+  target_link_libraries(entropy8 PRIVATE liblzma)
+  # FetchContent xz: public API headers live in src/liblzma/api/
+  if(xz_SOURCE_DIR)
+    target_include_directories(entropy8 PRIVATE ${xz_SOURCE_DIR}/src/liblzma/api)
+  endif()
+elseif(LIBLZMA_FOUND)
+  target_include_directories(entropy8 PRIVATE ${LIBLZMA_INCLUDE_DIRS})
+  target_link_libraries(entropy8 PRIVATE ${LIBLZMA_LIBRARIES})
+endif()
 
 set_target_properties(entropy8 PROPERTIES
   C_VISIBILITY_PRESET hidden

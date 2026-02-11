@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     cmake \
     ninja-build \
     pkg-config \
+    git \
     liblz4-dev \
     liblzma-dev \
     libzstd-dev \

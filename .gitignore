@@ -1,2 +1,71 @@
-# Entropy8 Files
+# ── Build artifacts ───────────────────────────────────────────────────────────
+build/
+cmake-build-*/
+out/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.pdb
+*.ilk
+*.exp
+
+# ── Entropy8 archives ────────────────────────────────────────────────────────
 *.e8
+
+# ── CMake ─────────────────────────────────────────────────────────────────────
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+_deps/
+
+# ── Ninja / Make ──────────────────────────────────────────────────────────────
+.ninja_log
+.ninja_deps
+Makefile
+
+# ── IDE / Editor ──────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.cproject
+.settings/
+*.code-workspace
+
+# ── Dear ImGui ────────────────────────────────────────────────────────────────
+imgui.ini
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+*.egg
+.venv/
+venv/
+env/
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+docker/.env
+
+# ── OS files ──────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+
+# ── Logs / temp ───────────────────────────────────────────────────────────────
+*.log
+*.tmp
+*.bak
