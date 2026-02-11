@@ -1,0 +1,1 @@
+# The Core of Entropy8

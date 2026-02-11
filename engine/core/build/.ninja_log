@@ -1,0 +1,8 @@
+# ninja log v7
+4	243	7925379563487549	CMakeFiles/entropy8.dir/src/io.c.obj	27ca3ea8f2d133f8
+10	253	7925379563557551	CMakeFiles/entropy8.dir/src/entropy8_api.c.obj	ea56d8a98d3983ff
+27	894	7925379563727523	CMakeFiles/entropy8.dir/src/engine/bridge.cpp.obj	a5a27dc67399a439
+20	1413	7925379563657525	CMakeFiles/entropy8.dir/src/engine/archive.cpp.obj	40f76c4132e23db1
+15	2841	7925379563597564	CMakeFiles/entropy8.dir/src/engine/thread_pool.cpp.obj	48c98ed703d3a2bf
+2843	3069	7925379593991974	libentropy8.dll	37d9c3418f54195e
+2843	3069	7925379593991974	libentropy8.dll.a	37d9c3418f54195e
