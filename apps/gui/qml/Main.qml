@@ -65,7 +65,7 @@ ApplicationWindow {
 
             Text {
                 anchors.centerIn: parent
-                text: "Drop files to compress"
+                text: "Drop files to compress or open"
                 font.family: theme.fontFamily
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
@@ -271,8 +271,8 @@ ApplicationWindow {
                     Text {
                         anchors.centerIn: parent
                         text: backend.supportsEncryption
-                              ? "\uD83D\uDD12 AES-256 encryption available"
-                              : "\uD83D\uDD13 Encryption not supported for " + backend.formatName
+                              ? "\uD83D\uDD12 AES-256 encrypt / decrypt"
+                              : "\uD83D\uDD13 Password used for decryption only"
                         font.family: theme.fontFamily
                         font.pixelSize: 11
                         color: backend.supportsEncryption ? theme.accent : theme.textDim
@@ -286,7 +286,6 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     Layout.topMargin: 6
                     spacing: 10
-                    opacity: backend.supportsEncryption ? 1.0 : 0.4
 
                     Text {
                         text: "Password:"
@@ -342,7 +341,6 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 10
-                    opacity: backend.supportsEncryption ? 1.0 : 0.4
 
                     Text {
                         text: "Repeat:"
@@ -488,7 +486,7 @@ ApplicationWindow {
                 Text {
                     Layout.fillWidth: true
                     Layout.bottomMargin: 4
-                    text: "Drop files here to compress"
+                    text: "Drop files here to compress or open"
                     font.family: theme.fontFamily
                     font.pixelSize: 12
                     color: theme.textDim
@@ -638,6 +636,27 @@ ApplicationWindow {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: folderDialog.open()
+                    }
+                }
+
+                // Encrypted badge
+                Rectangle {
+                    visible: backend.archiveEncrypted
+                    width: encBadgeText.implicitWidth + 16
+                    height: 24
+                    radius: 6
+                    color: Qt.rgba(0.25, 0.56, 0.96, 0.12)
+                    border.color: Qt.rgba(0.25, 0.56, 0.96, 0.3)
+                    border.width: 1
+
+                    Text {
+                        id: encBadgeText
+                        anchors.centerIn: parent
+                        text: "\uD83D\uDD12 Encrypted"
+                        font.family: theme.fontFamily
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        color: theme.accent
                     }
                 }
 

@@ -42,12 +42,13 @@ class ArchiveBackend : public QObject {
     Q_PROPERTY(bool archiveSeparately READ archiveSeparately WRITE setArchiveSeparately NOTIFY archiveSeparatelyChanged)
 
     // ── Archive viewer ───────────────────────────────────────────────────
-    Q_PROPERTY(bool         archiveOpen READ archiveOpen NOTIFY archiveOpenChanged)
-    Q_PROPERTY(bool         showViewer  READ showViewer  WRITE setShowViewer NOTIFY showViewerChanged)
-    Q_PROPERTY(QString      archivePath READ archivePath NOTIFY archivePathChanged)
-    Q_PROPERTY(QVariantList entries     READ entries     NOTIFY entriesChanged)
-    Q_PROPERTY(int          entryCount  READ entryCount  NOTIFY entriesChanged)
-    Q_PROPERTY(QString      totalSize   READ totalSize   NOTIFY entriesChanged)
+    Q_PROPERTY(bool         archiveOpen      READ archiveOpen      NOTIFY archiveOpenChanged)
+    Q_PROPERTY(bool         archiveEncrypted READ archiveEncrypted NOTIFY archiveOpenChanged)
+    Q_PROPERTY(bool         showViewer       READ showViewer       WRITE setShowViewer NOTIFY showViewerChanged)
+    Q_PROPERTY(QString      archivePath      READ archivePath      NOTIFY archivePathChanged)
+    Q_PROPERTY(QVariantList entries          READ entries          NOTIFY entriesChanged)
+    Q_PROPERTY(int          entryCount       READ entryCount       NOTIFY entriesChanged)
+    Q_PROPERTY(QString      totalSize        READ totalSize        NOTIFY entriesChanged)
 
     // ── Status ───────────────────────────────────────────────────────────
     Q_PROPERTY(QString statusMessage READ statusMessage NOTIFY statusChanged)
@@ -78,6 +79,7 @@ public:
     bool archiveSeparately() const;
 
     bool         archiveOpen() const;
+    bool         archiveEncrypted() const;
     bool         showViewer() const;
     QString      archivePath() const;
     QVariantList entries() const;
@@ -146,8 +148,9 @@ private:
     bool m_deleteAfter       = false;
     bool m_archiveSeparately = false;
 
-    bool         m_archiveOpen = false;
-    bool         m_showViewer  = false;
+    bool         m_archiveOpen      = false;
+    bool         m_archiveEncrypted = false;
+    bool         m_showViewer       = false;
     QString      m_archivePath;
     QVariantList m_entries;
     quint64      m_totalUncompressed = 0;

@@ -109,8 +109,9 @@ bool ArchiveBackend::archiveSeparately() const { return m_archiveSeparately; }
 void ArchiveBackend::setArchiveSeparately(bool v) { if (v == m_archiveSeparately) return; m_archiveSeparately = v; emit archiveSeparatelyChanged(); }
 
 // ── Viewer ───────────────────────────────────────────────────────────────────
-bool         ArchiveBackend::archiveOpen() const { return m_archiveOpen; }
-bool         ArchiveBackend::showViewer()  const { return m_showViewer; }
+bool         ArchiveBackend::archiveOpen()      const { return m_archiveOpen; }
+bool         ArchiveBackend::archiveEncrypted() const { return m_archiveEncrypted; }
+bool         ArchiveBackend::showViewer()       const { return m_showViewer; }
 QString      ArchiveBackend::archivePath() const { return m_archivePath; }
 QVariantList ArchiveBackend::entries()     const { return m_entries; }
 int          ArchiveBackend::entryCount()  const { return m_entries.size(); }
@@ -165,13 +166,29 @@ static bool isArchiveFile(const QString &path) {
     return false;
 }
 
+/**
+ * Detect if a file is an encrypted archive by checking magic bytes.
+ * E8 encrypted: "E8AE", 7Z/ZIP encryption detected by libarchive on open.
+ */
+static bool detectEncryptedE8(const QString &path) {
+    std::string spath = path.toStdString();
+    FILE *fp = fopen(spath.c_str(), "rb");
+    if (!fp) return false;
+    uint8_t mag[4] = {0};
+    fread(mag, 1, 4, fp);
+    fclose(fp);
+    return (mag[0] == 'E' && mag[1] == '8' && mag[2] == 'A' && mag[3] == 'E');
+}
+
 bool ArchiveBackend::openArchive(const QString &path) {
     std::string spath = path.toStdString();
-    const char *pw = m_password.isEmpty() ? nullptr : m_password.toStdString().c_str();
 
     /* Use password as a persistent std::string to avoid dangling pointer */
     std::string pw_str = m_password.toStdString();
     const char *pw_ptr = pw_str.empty() ? nullptr : pw_str.c_str();
+
+    /* Detect if archive is encrypted (E8 magic byte check) */
+    bool isEncryptedE8 = detectEncryptedE8(path);
 
     char **paths = nullptr;
     uint64_t *sizes = nullptr;
@@ -179,12 +196,21 @@ bool ArchiveBackend::openArchive(const QString &path) {
 
     int r = e8_mf_list(spath.c_str(), pw_ptr, &paths, &sizes, &count);
     if (r != 0) {
-        setStatus("Cannot open archive: " + path, true);
+        if (isEncryptedE8 && pw_str.empty()) {
+            setStatus("Encrypted archive. Enter password and drop again.", true);
+        } else if (isEncryptedE8 && !pw_str.empty()) {
+            setStatus("Wrong password or corrupt archive.", true);
+        } else if (pw_str.empty()) {
+            setStatus("Cannot open archive (may be encrypted). Try with a password.", true);
+        } else {
+            setStatus("Cannot open archive: " + path, true);
+        }
         return false;
     }
 
     m_entries.clear();
     m_totalUncompressed = 0;
+    m_archiveEncrypted = isEncryptedE8 || (!pw_str.empty() && count > 0);
 
     for (size_t i = 0; i < count; ++i) {
         QVariantMap entry;
@@ -203,7 +229,12 @@ bool ArchiveBackend::openArchive(const QString &path) {
 
     m_archivePath = path;
     m_archiveOpen = true;
-    setStatus(QString("Opened: %1 (%2 entries)").arg(path).arg(count), false);
+
+    QString statusMsg = QString("Opened: %1 (%2 entries)").arg(path).arg(count);
+    if (m_archiveEncrypted)
+        statusMsg += QString::fromUtf8("  \xF0\x9F\x94\x92");
+    setStatus(statusMsg, false);
+
     emit archivePathChanged();
     emit archiveOpenChanged();
     emit entriesChanged();
@@ -311,7 +342,12 @@ void ArchiveBackend::extractAll(const QUrl &folderUrl) {
                           nullptr, nullptr);
 
     if (r < 0) {
-        setStatus("Extraction failed.", true);
+        if (m_archiveEncrypted && pw_str.empty())
+            setStatus("Extraction failed. Enter password for encrypted archive.", true);
+        else if (m_archiveEncrypted)
+            setStatus("Extraction failed. Wrong password?", true);
+        else
+            setStatus("Extraction failed.", true);
         return;
     }
 
