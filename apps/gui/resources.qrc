@@ -1,0 +1,17 @@
+<!DOCTYPE RCC>
+<RCC>
+  <qresource prefix="/fonts">
+    <file alias="InterTight-Thin.ttf">../../fonts/InterTight-Thin.ttf</file>
+    <file alias="InterTight-ExtraLight.ttf">../../fonts/InterTight-ExtraLight.ttf</file>
+    <file alias="InterTight-Light.ttf">../../fonts/InterTight-Light.ttf</file>
+    <file alias="InterTight-Regular.ttf">../../fonts/InterTight-Regular.ttf</file>
+    <file alias="InterTight-Medium.ttf">../../fonts/InterTight-Medium.ttf</file>
+    <file alias="InterTight-SemiBold.ttf">../../fonts/InterTight-SemiBold.ttf</file>
+    <file alias="InterTight-Bold.ttf">../../fonts/InterTight-Bold.ttf</file>
+    <file alias="InterTight-ExtraBold.ttf">../../fonts/InterTight-ExtraBold.ttf</file>
+    <file alias="InterTight-Black.ttf">../../fonts/InterTight-Black.ttf</file>
+  </qresource>
+  <qresource prefix="/">
+    <file alias="Main.qml">qml/Main.qml</file>
+  </qresource>
+</RCC>

@@ -1,137 +1,52 @@
-#include "app.hpp"
-#include "ui.hpp"
-#include "theme.hpp"
+#include <QGuiApplication>
+#include <QQmlApplicationEngine>
+#include <QQmlContext>
+#include <QFontDatabase>
+#include <QFont>
+#include <QQuickStyle>
 
-#include <imgui.h>
-#include <imgui_impl_glfw.h>
-#include <imgui_impl_opengl3.h>
+#include "backend.hpp"
 
-#include <GLFW/glfw3.h>
+int main(int argc, char *argv[])
+{
+    QGuiApplication app(argc, argv);
+    app.setApplicationName("Entropy8");
+    app.setOrganizationName("Entropy8");
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
+    // Use "Basic" style so our QML fully controls visuals
+    QQuickStyle::setStyle("Basic");
 
-#include <cstdio>
-#include <cstring>
-#include <string>
-#include <vector>
+    // ── Load InterTight font family from embedded resources ──────────────
+    const QStringList fontFiles = {
+        QStringLiteral(":/fonts/InterTight-Thin.ttf"),
+        QStringLiteral(":/fonts/InterTight-ExtraLight.ttf"),
+        QStringLiteral(":/fonts/InterTight-Light.ttf"),
+        QStringLiteral(":/fonts/InterTight-Regular.ttf"),
+        QStringLiteral(":/fonts/InterTight-Medium.ttf"),
+        QStringLiteral(":/fonts/InterTight-SemiBold.ttf"),
+        QStringLiteral(":/fonts/InterTight-Bold.ttf"),
+        QStringLiteral(":/fonts/InterTight-ExtraBold.ttf"),
+        QStringLiteral(":/fonts/InterTight-Black.ttf"),
+    };
 
-using namespace entropy8::gui;
+    for (const auto &f : fontFiles)
+        QFontDatabase::addApplicationFont(f);
 
-// ── Globals ──────────────────────────────────────────────────────────────────
-static AppState* g_state = nullptr;
+    // Set application-wide default font
+    QFont defaultFont("Inter Tight");
+    defaultFont.setPixelSize(13);
+    defaultFont.setHintingPreference(QFont::PreferNoHinting);
+    app.setFont(defaultFont);
 
-// ── Drag-and-drop ────────────────────────────────────────────────────────────
-static void drop_callback(GLFWwindow* /*window*/, int count, const char** paths) {
-	if (!g_state) return;
+    // ── Backend ──────────────────────────────────────────────────────────
+    ArchiveBackend backend;
 
-	for (int i = 0; i < count; ++i) {
-		const char* path = paths[i];
-		size_t len = strlen(path);
+    QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty("backend", &backend);
 
-		// If dropped file is a supported archive, open the viewer
-		if (len > 3 && strcmp(path + len - 3, ".e8") == 0) {
-			OpenArchive(*g_state, path);
-			g_state->show_viewer = true;
-			continue;
-		}
+    engine.load(QUrl(QStringLiteral("qrc:/Main.qml")));
+    if (engine.rootObjects().isEmpty())
+        return -1;
 
-		// Otherwise add to compression queue
-		bool dup = false;
-		for (auto& f : g_state->files_to_add)
-			if (f == path) { dup = true; break; }
-		if (!dup) g_state->files_to_add.push_back(path);
-	}
-
-	// Auto-create archive when files are dropped
-	if (!g_state->files_to_add.empty()) {
-		CreateArchive(*g_state);
-		g_state->files_to_add.clear();
-	}
-}
-
-static void glfw_error_callback(int error, const char* description) {
-	fprintf(stderr, "GLFW Error %d: %s\n", error, description);
-}
-
-// ── Main ─────────────────────────────────────────────────────────────────────
-#ifdef _WIN32
-int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-#else
-int main(int, char**) {
-#endif
-	glfwSetErrorCallback(glfw_error_callback);
-	if (!glfwInit()) return 1;
-
-	// OpenGL 3.3 core
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-#ifdef __APPLE__
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-#endif
-	glfwWindowHint(GLFW_SAMPLES, 4);
-	glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE); // Fixed size like Keka
-
-	// Compact window size matching Keka style
-	GLFWwindow* window = glfwCreateWindow(380, 520, "Entropy8", nullptr, nullptr);
-	if (!window) {
-		glfwTerminate();
-		return 1;
-	}
-	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1);
-
-	// Setup Dear ImGui
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-	io.IniFilename = nullptr; // No imgui.ini for compact app
-
-	// Font: slightly larger for readability
-	ImFontConfig fontCfg;
-	fontCfg.OversampleH = 2;
-	fontCfg.OversampleV = 2;
-	io.Fonts->AddFontDefault(&fontCfg);
-
-	ApplyDarkTheme();
-
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 330 core");
-
-	// State
-	AppState state;
-	g_state = &state;
-	glfwSetDropCallback(window, drop_callback);
-
-	ImVec4 clear = ImVec4(0.09f, 0.09f, 0.10f, 1.00f);
-
-	while (!glfwWindowShouldClose(window)) {
-		glfwPollEvents();
-
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
-		ImGui::NewFrame();
-
-		RenderUI(state);
-
-		ImGui::Render();
-		int dw, dh;
-		glfwGetFramebufferSize(window, &dw, &dh);
-		glViewport(0, 0, dw, dh);
-		glClearColor(clear.x, clear.y, clear.z, clear.w);
-		glClear(GL_COLOR_BUFFER_BIT);
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-		glfwSwapBuffers(window);
-	}
-
-	ImGui_ImplOpenGL3_Shutdown();
-	ImGui_ImplGlfw_Shutdown();
-	ImGui::DestroyContext();
-	glfwDestroyWindow(window);
-	glfwTerminate();
-	return 0;
+    return app.exec();
 }
