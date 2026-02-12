@@ -9,14 +9,15 @@ import QtQuick.Dialogs
 ApplicationWindow {
     id: root
     visible: true
-    width: 400
-    height: 600
-    minimumWidth: 400
-    maximumWidth: 400
-    minimumHeight: 600
-    maximumHeight: 600
+    width: 420
+    height: 640
+    minimumWidth: 360
+    minimumHeight: 480
     title: "Entropy8"
     color: theme.bg
+
+    // ─── Language ──────────────────────────────────────────────────────────
+    property string lang: "en"
 
     // ─── Theme ───────────────────────────────────────────────────────────
     QtObject {
@@ -36,10 +37,53 @@ ApplicationWindow {
         readonly property string fontFamily: "Inter Tight"
     }
 
+    // ─── Translations ────────────────────────────────────────────────────
+    QtObject {
+        id: tr
+        readonly property bool isTr: root.lang === "tr"
+
+        // Labels
+        readonly property string method:      isTr ? "Metot:"  : "Method:"
+        readonly property string split:        isTr ? "B\u00f6lme:"  : "Split:"
+        readonly property string password:     isTr ? "\u015eifre:"  : "Password:"
+        readonly property string repeat:       isTr ? "Tekrar:"  : "Repeat:"
+        readonly property string splitHint:    isTr ? "\u00d6rnek: 5 MB" : "Example: 5 MB"
+
+        // Slider ticks
+        readonly property var methods: isTr
+            ? ["Depola", "H\u0131zl\u0131", "Normal", "Yava\u015f"]
+            : ["Store", "Fast", "Normal", "Slow"]
+
+        // Encryption
+        readonly property string encryptAvail:   isTr ? "\uD83D\uDD12 AES-256 \u015fifreleme / \u00e7\u00f6zme" : "\uD83D\uDD12 AES-256 encrypt / decrypt"
+        readonly property string encryptDecOnly:  isTr ? "\uD83D\uDD13 \u015eifre sadece \u00e7\u00f6zme i\u00e7in kullan\u0131l\u0131r" : "\uD83D\uDD13 Password used for decryption only"
+
+        // Checkboxes
+        readonly property string encryptFilenames: isTr ? "Dosya adlar\u0131n\u0131 \u015fifrele"   : "Encrypt filenames"
+        readonly property string solidArchive:     isTr ? "Tek par\u00e7a ar\u015fiv"               : "Solid archive"
+        readonly property string selfExtracting:   isTr ? "Windows i\u00e7in kendinden a\u00e7\u0131lan ar\u015fiv" : "Self-extracting archive for Windows"
+        readonly property string verifyIntegrity:  isTr ? "S\u0131k\u0131\u015ft\u0131rma b\u00fct\u00fcnl\u00fc\u011f\u00fcn\u00fc do\u011frula"     : "Verify compression integrity"
+        readonly property string deleteAfter:      isTr ? "S\u0131k\u0131\u015ft\u0131rmadan sonra dosyalar\u0131 sil" : "Delete file(s) after compression"
+        readonly property string archiveSeparately: isTr ? "\u00d6\u011feleri ayr\u0131 ayr\u0131 ar\u015fivle"       : "Archive items separately"
+
+        // Drop / status
+        readonly property string dropOverlay:  isTr ? "S\u0131k\u0131\u015ft\u0131rmak veya a\u00e7mak i\u00e7in b\u0131rak\u0131n" : "Drop files to compress or open"
+        readonly property string dropHint:     isTr ? "Dosyalar\u0131 s\u00fcr\u00fckleyip b\u0131rak\u0131n"          : "Drop files here to compress or open"
+
+        // Viewer
+        readonly property string extractAll:   isTr ? "T\u00fcm\u00fcn\u00fc \u00c7\u0131kar" : "Extract All"
+        readonly property string encrypted:    isTr ? "\uD83D\uDD12 \u015eifreli"             : "\uD83D\uDD12 Encrypted"
+        readonly property string entries:      isTr ? "kay\u0131t"                             : "entries"
+        readonly property string colName:      isTr ? "Ad"     : "Name"
+        readonly property string colSize:      isTr ? "Boyut"  : "Size"
+        readonly property string colCodec:     isTr ? "Kodek"  : "Codec"
+        readonly property string extractTo:    isTr ? "\u00c7\u0131kar\u0131lacak Klas\u00f6r" : "Extract To"
+    }
+
     // ─── Folder dialog for extraction ────────────────────────────────────
     FolderDialog {
         id: folderDialog
-        title: "Extract To"
+        title: tr.extractTo
         onAccepted: backend.extractAll(selectedFolder)
     }
 
@@ -65,7 +109,7 @@ ApplicationWindow {
 
             Text {
                 anchors.centerIn: parent
-                text: "Drop files to compress or open"
+                text: tr.dropOverlay
                 font.family: theme.fontFamily
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
@@ -79,7 +123,7 @@ ApplicationWindow {
             anchors.margins: 20
             contentHeight: mainColumn.height
             clip: true
-            interactive: false
+            interactive: contentHeight > height
 
             ColumnLayout {
                 id: mainColumn
@@ -87,11 +131,51 @@ ApplicationWindow {
                 spacing: 6
 
                 // ═══════════════════════════════════════════════════════════
-                // Format badge (right-aligned)
+                // Top row: language toggle (left) + format badge (right)
                 // ═══════════════════════════════════════════════════════════
                 Item {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 36
+
+                    // Language toggle
+                    Rectangle {
+                        id: langBadge
+                        anchors.left: parent.left
+                        width: langRow.width + 16
+                        height: 32
+                        radius: 8
+                        color: langMa.containsMouse ? theme.panel : theme.surface
+                        border.color: theme.border
+                        border.width: 1
+
+                        Row {
+                            id: langRow
+                            anchors.centerIn: parent
+                            spacing: 6
+
+                            Text {
+                                text: "\uD83C\uDF10"
+                                font.pixelSize: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                text: root.lang === "tr" ? "TR" : "EN"
+                                font.family: theme.fontFamily
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                                color: theme.text
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+
+                        MouseArea {
+                            id: langMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.lang = (root.lang === "en") ? "tr" : "en"
+                        }
+                    }
 
                     // Format badge button
                     Rectangle {
@@ -135,7 +219,7 @@ ApplicationWindow {
                         id: methodLabel
                         anchors.left: parent.left
                         anchors.top: parent.top
-                        text: "Method:"
+                        text: tr.method
                         font.family: theme.fontFamily
                         font.pixelSize: 13
                         font.weight: Font.Medium
@@ -179,6 +263,8 @@ ApplicationWindow {
                             color: methodSlider.pressed ? theme.accentHover : theme.accent
 
                             Behavior on color { ColorAnimation { duration: 100 } }
+
+                            HoverHandler { cursorShape: Qt.PointingHandCursor }
                         }
                     }
 
@@ -192,7 +278,7 @@ ApplicationWindow {
                         anchors.rightMargin: methodSlider.rightPadding
 
                         Repeater {
-                            model: ["Store", "Fast", "Normal", "Slow"]
+                            model: tr.methods
                             Item {
                                 width: parent.width / 4
                                 height: 16
@@ -221,7 +307,7 @@ ApplicationWindow {
                     spacing: 10
 
                     Text {
-                        text: "Split:"
+                        text: tr.split
                         Layout.preferredWidth: 72
                         font.family: theme.fontFamily
                         font.pixelSize: 13
@@ -232,7 +318,7 @@ ApplicationWindow {
                     TextField {
                         id: splitField
                         Layout.fillWidth: true
-                        placeholderText: "Example: 5 MB"
+                        placeholderText: tr.splitHint
                         text: backend.splitValue
                         onTextChanged: backend.splitValue = text
                         font.family: theme.fontFamily
@@ -270,9 +356,7 @@ ApplicationWindow {
 
                     Text {
                         anchors.centerIn: parent
-                        text: backend.supportsEncryption
-                              ? "\uD83D\uDD12 AES-256 encrypt / decrypt"
-                              : "\uD83D\uDD13 Password used for decryption only"
+                        text: backend.supportsEncryption ? tr.encryptAvail : tr.encryptDecOnly
                         font.family: theme.fontFamily
                         font.pixelSize: 11
                         color: backend.supportsEncryption ? theme.accent : theme.textDim
@@ -288,7 +372,7 @@ ApplicationWindow {
                     spacing: 10
 
                     Text {
-                        text: "Password:"
+                        text: tr.password
                         Layout.preferredWidth: 72
                         font.family: theme.fontFamily
                         font.pixelSize: 13
@@ -319,6 +403,7 @@ ApplicationWindow {
                     AbstractButton {
                         id: pwEye
                         checkable: true
+                        hoverEnabled: true
                         Layout.preferredWidth: 30
                         Layout.preferredHeight: 32
 
@@ -335,6 +420,8 @@ ApplicationWindow {
                             radius: theme.radius
                             color: pwEye.hovered ? theme.panel : "transparent"
                         }
+
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
                     }
                 }
 
@@ -343,7 +430,7 @@ ApplicationWindow {
                     spacing: 10
 
                     Text {
-                        text: "Repeat:"
+                        text: tr.repeat
                         Layout.preferredWidth: 72
                         font.family: theme.fontFamily
                         font.pixelSize: 13
@@ -374,6 +461,7 @@ ApplicationWindow {
                     AbstractButton {
                         id: pw2Eye
                         checkable: true
+                        hoverEnabled: true
                         Layout.preferredWidth: 30
                         Layout.preferredHeight: 32
 
@@ -390,6 +478,8 @@ ApplicationWindow {
                             radius: theme.radius
                             color: pw2Eye.hovered ? theme.panel : "transparent"
                         }
+
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
                     }
                 }
 
@@ -399,17 +489,17 @@ ApplicationWindow {
                 Item { Layout.preferredHeight: 6 }
 
                 DarkCheckBox {
-                    text: "Encrypt filenames"
+                    text: tr.encryptFilenames
                     checked: backend.encryptFilenames
                     onCheckedChanged: backend.encryptFilenames = checked
                 }
                 DarkCheckBox {
-                    text: "Solid archive"
+                    text: tr.solidArchive
                     checked: backend.solidArchive
                     onCheckedChanged: backend.solidArchive = checked
                 }
                 DarkCheckBox {
-                    text: "Self-extracting archive for Windows"
+                    text: tr.selfExtracting
                     checked: backend.selfExtracting
                     onCheckedChanged: backend.selfExtracting = checked
                 }
@@ -428,17 +518,17 @@ ApplicationWindow {
                 // Checkboxes – group 2
                 // ═══════════════════════════════════════════════════════════
                 DarkCheckBox {
-                    text: "Verify compression integrity"
+                    text: tr.verifyIntegrity
                     checked: backend.verifyIntegrity
                     onCheckedChanged: backend.verifyIntegrity = checked
                 }
                 DarkCheckBox {
-                    text: "Delete file(s) after compression"
+                    text: tr.deleteAfter
                     checked: backend.deleteAfter
                     onCheckedChanged: backend.deleteAfter = checked
                 }
                 DarkCheckBox {
-                    text: "Archive items separately"
+                    text: tr.archiveSeparately
                     checked: backend.archiveSeparately
                     onCheckedChanged: backend.archiveSeparately = checked
                 }
@@ -486,7 +576,7 @@ ApplicationWindow {
                 Text {
                     Layout.fillWidth: true
                     Layout.bottomMargin: 4
-                    text: "Drop files here to compress or open"
+                    text: tr.dropHint
                     font.family: theme.fontFamily
                     font.pixelSize: 12
                     color: theme.textDim
@@ -623,7 +713,7 @@ ApplicationWindow {
                     Text {
                         id: extractBtn
                         anchors.centerIn: parent
-                        text: "Extract All"
+                        text: tr.extractAll
                         font.family: theme.fontFamily
                         font.pixelSize: 13
                         font.weight: Font.DemiBold
@@ -652,7 +742,7 @@ ApplicationWindow {
                     Text {
                         id: encBadgeText
                         anchors.centerIn: parent
-                        text: "\uD83D\uDD12 Encrypted"
+                        text: tr.encrypted
                         font.family: theme.fontFamily
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
@@ -661,7 +751,7 @@ ApplicationWindow {
                 }
 
                 Text {
-                    text: backend.entryCount + " entries  |  " + backend.totalSize
+                    text: backend.entryCount + " " + tr.entries + "  |  " + backend.totalSize
                     font.family: theme.fontFamily
                     font.pixelSize: 12
                     color: theme.textDim
@@ -692,7 +782,7 @@ ApplicationWindow {
                     Text {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 3
-                        text: "Name"
+                        text: tr.colName
                         font.family: theme.fontFamily
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
@@ -701,7 +791,7 @@ ApplicationWindow {
                     Text {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1
-                        text: "Size"
+                        text: tr.colSize
                         font.family: theme.fontFamily
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
@@ -710,7 +800,7 @@ ApplicationWindow {
                     Text {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 0.8
-                        text: "Codec"
+                        text: tr.colCodec
                         font.family: theme.fontFamily
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
@@ -790,9 +880,16 @@ ApplicationWindow {
         id: cb
         Layout.fillWidth: true
         spacing: 8
+        hoverEnabled: true
 
         font.family: theme.fontFamily
         font.pixelSize: 13
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: cb.toggle()
+        }
 
         indicator: Rectangle {
             implicitWidth: 18
