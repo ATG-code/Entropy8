@@ -9,13 +9,13 @@
 
 using namespace entropy8;
 
-void *e8_engine_create(E8Stream *stream) {
+void *e8_engine_create(E8Stream *stream, const char *password) {
 	if (!stream) {
 		e8_set_last_error((int)E8_ERR_INVALID_ARG);
 		return nullptr;
 	}
 	try {
-		std::unique_ptr<Archive> ar(new Archive(stream, Archive::Mode::Write));
+		std::unique_ptr<Archive> ar(new Archive(stream, Archive::Mode::Write, password));
 		return ar.release();
 	} catch (...) {
 		e8_set_last_error((int)E8_ERR_MEMORY);
@@ -23,13 +23,13 @@ void *e8_engine_create(E8Stream *stream) {
 	}
 }
 
-void *e8_engine_open(E8Stream *stream) {
+void *e8_engine_open(E8Stream *stream, const char *password) {
 	if (!stream) {
 		e8_set_last_error((int)E8_ERR_INVALID_ARG);
 		return nullptr;
 	}
 	try {
-		std::unique_ptr<Archive> ar(new Archive(stream, Archive::Mode::Read));
+		std::unique_ptr<Archive> ar(new Archive(stream, Archive::Mode::Read, password));
 		if (ar->load() != 0) {
 			e8_set_last_error((int)E8_ERR_FORMAT);
 			return nullptr;

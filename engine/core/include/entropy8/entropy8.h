@@ -34,14 +34,16 @@ typedef int (*E8ProgressFn)(void *user, uint64_t current, uint64_t total);
 
 /**
  * Create new archive writing to stream. stream must be writable and seekable.
+ * If password is non-NULL and non-empty, the archive is AES-256-CBC encrypted.
  * Returns handle or NULL on error; use e8_last_error() for code.
  */
-ENTROPY8_API E8Archive *e8_archive_create(E8Stream *stream);
+ENTROPY8_API E8Archive *e8_archive_create(E8Stream *stream, const char *password);
 
 /**
  * Open existing archive from stream. stream must be readable and seekable.
+ * If the archive is encrypted, password must be provided.
  */
-ENTROPY8_API E8Archive *e8_archive_open(E8Stream *stream);
+ENTROPY8_API E8Archive *e8_archive_open(E8Stream *stream, const char *password);
 
 /**
  * Release archive and all resources.

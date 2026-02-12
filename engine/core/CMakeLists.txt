@@ -65,6 +65,25 @@ if(NOT liblzma_FOUND AND NOT LIBLZMA_FOUND)
   # xz cmake creates target: liblzma
 endif()
 
+# ── libarchive (multi-format archive support) ────────────────────────────────
+find_package(LibArchive QUIET)
+if(NOT LibArchive_FOUND)
+  message(STATUS "libarchive not found – fetching from source")
+  FetchContent_Declare(libarchive
+    GIT_REPOSITORY https://github.com/libarchive/libarchive.git
+    GIT_TAG        v3.7.7
+    GIT_SHALLOW    ON
+  )
+  set(ENABLE_TEST OFF CACHE BOOL "" FORCE)
+  set(ENABLE_TAR OFF CACHE BOOL "" FORCE)
+  set(ENABLE_CPIO OFF CACHE BOOL "" FORCE)
+  set(ENABLE_CAT OFF CACHE BOOL "" FORCE)
+  set(ENABLE_UNZIP OFF CACHE BOOL "" FORCE)
+  set(ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+  FetchContent_MakeAvailable(libarchive)
+  # Creates target: archive_static (or archive)
+endif()
+
 # ── entropy8 shared library ─────────────────────────────────────────────────
 add_library(entropy8 SHARED
   ${ENTROPY8_SRC_DIR}/io.c
@@ -73,9 +92,13 @@ add_library(entropy8 SHARED
   ${ENTROPY8_SRC_DIR}/algorithms/lz4.c
   ${ENTROPY8_SRC_DIR}/algorithms/lzma.c
   ${ENTROPY8_SRC_DIR}/algorithms/zstd.c
+  ${ENTROPY8_SRC_DIR}/crypto/aes256.c
+  ${ENTROPY8_SRC_DIR}/crypto/sha256.c
+  ${ENTROPY8_SRC_DIR}/crypto/e8_crypto.c
   ${ENTROPY8_SRC_DIR}/engine/thread_pool.cpp
   ${ENTROPY8_SRC_DIR}/engine/archive.cpp
   ${ENTROPY8_SRC_DIR}/engine/bridge.cpp
+  ${ENTROPY8_SRC_DIR}/multi_format.cpp
 )
 
 target_include_directories(entropy8
@@ -116,6 +139,25 @@ elseif(TARGET liblzma)
 elseif(LIBLZMA_FOUND)
   target_include_directories(entropy8 PRIVATE ${LIBLZMA_INCLUDE_DIRS})
   target_link_libraries(entropy8 PRIVATE ${LIBLZMA_LIBRARIES})
+endif()
+
+# libarchive
+if(LibArchive_FOUND)
+  target_include_directories(entropy8 PRIVATE ${LibArchive_INCLUDE_DIRS})
+  target_link_libraries(entropy8 PRIVATE ${LibArchive_LIBRARIES})
+elseif(TARGET archive_static)
+  target_link_libraries(entropy8 PRIVATE archive_static)
+  target_include_directories(entropy8 PRIVATE ${libarchive_SOURCE_DIR}/libarchive)
+elseif(TARGET archive)
+  target_link_libraries(entropy8 PRIVATE archive)
+  if(libarchive_SOURCE_DIR)
+    target_include_directories(entropy8 PRIVATE ${libarchive_SOURCE_DIR}/libarchive)
+  endif()
+endif()
+
+# Windows crypto (for CryptGenRandom used in e8_crypto.c)
+if(WIN32)
+  target_link_libraries(entropy8 PRIVATE advapi32)
 endif()
 
 set_target_properties(entropy8 PROPERTIES

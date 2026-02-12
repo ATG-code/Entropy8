@@ -16,24 +16,24 @@ void e8_set_last_error(int code) {
 	g_e8_last_error = code;
 }
 
-E8Archive *e8_archive_create(E8Stream *stream) {
+E8Archive *e8_archive_create(E8Stream *stream, const char *password) {
 	if (!stream) {
 		g_e8_last_error = E8_ERR_INVALID_ARG;
 		return NULL;
 	}
-	void *engine = e8_engine_create(stream);
+	void *engine = e8_engine_create(stream, password);
 	if (!engine) {
 		return NULL;
 	}
 	return (E8Archive *)engine;
 }
 
-E8Archive *e8_archive_open(E8Stream *stream) {
+E8Archive *e8_archive_open(E8Stream *stream, const char *password) {
 	if (!stream) {
 		g_e8_last_error = E8_ERR_INVALID_ARG;
 		return NULL;
 	}
-	void *engine = e8_engine_open(stream);
+	void *engine = e8_engine_open(stream, password);
 	if (!engine) {
 		return NULL;
 	}

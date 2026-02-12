@@ -1,6 +1,7 @@
 #include "backend.hpp"
 
 #include <entropy8/entropy8.h>
+#include <entropy8/multi_format.h>
 #include <entropy8/io.h>
 #include <entropy8/codec.h>
 
@@ -17,67 +18,23 @@
 struct FormatInfo {
     const char *name;
     const char *extension;
-    const char *color;   // "#RRGGBB"
+    const char *color;        // "#RRGGBB"
     bool        supported;
+    bool        encrypts;     // supports encryption
+    enum E8Format e8fmt;
 };
 
 static const FormatInfo kFormats[] = {
-    {"7Z",    ".7z",  "#E07020", false},
-    {"BZIP2", ".bz2", "#3080E0", false},
-    {"E8",    ".e8",  "#4090F5", true },
-    {"GZIP",  ".gz",  "#40B040", false},
-    {"LZIP",  ".lz",  "#7040E0", false},
-    {"TAR",   ".tar", "#C0A060", false},
-    {"XZ",    ".xz",  "#D06050", false},
-    {"ZIP",   ".zip", "#E09030", false},
+    {"7Z",    ".7z",  "#E07020", true,  true,  E8_FMT_7Z   },
+    {"BZIP2", ".bz2", "#3080E0", true,  false, E8_FMT_BZIP2},
+    {"E8",    ".e8",  "#4090F5", true,  true,  E8_FMT_E8   },
+    {"GZIP",  ".gz",  "#40B040", true,  false, E8_FMT_GZIP },
+    {"LZIP",  ".lz",  "#7040E0", true,  false, E8_FMT_LZIP },
+    {"TAR",   ".tar", "#C0A060", true,  false, E8_FMT_TAR  },
+    {"XZ",    ".xz",  "#D06050", true,  false, E8_FMT_XZ   },
+    {"ZIP",   ".zip", "#E09030", true,  true,  E8_FMT_ZIP  },
 };
 static constexpr int kFormatCount = sizeof(kFormats) / sizeof(kFormats[0]);
-
-// ═════════════════════════════════════════════════════════════════════════════
-// File-stream helpers (identical to the original app.cpp ones)
-// ═════════════════════════════════════════════════════════════════════════════
-namespace {
-
-struct FileCtx { FILE *fp; };
-
-static ptrdiff_t file_read(void *ctx, void *buf, size_t size) {
-    return static_cast<ptrdiff_t>(fread(buf, 1, size, static_cast<FileCtx *>(ctx)->fp));
-}
-static ptrdiff_t file_write(void *ctx, const void *buf, size_t size) {
-    return static_cast<ptrdiff_t>(fwrite(buf, 1, size, static_cast<FileCtx *>(ctx)->fp));
-}
-static int64_t file_seek(void *ctx, int64_t offset, int origin) {
-    FILE *fp = static_cast<FileCtx *>(ctx)->fp;
-#ifdef _WIN32
-    _fseeki64(fp, offset, origin);
-    return _ftelli64(fp);
-#else
-    fseeko(fp, static_cast<off_t>(offset), origin);
-    return static_cast<int64_t>(ftello(fp));
-#endif
-}
-static int file_flush(void *ctx) {
-    return fflush(static_cast<FileCtx *>(ctx)->fp);
-}
-static int file_close(void *ctx) {
-    auto *fc = static_cast<FileCtx *>(ctx);
-    int r = fclose(fc->fp);
-    delete fc;
-    return r;
-}
-
-static E8StreamVtable g_vtable = {
-    file_read, file_write, file_seek, file_flush, file_close
-};
-
-static E8Stream make_stream(FILE *fp) {
-    auto *fc = new FileCtx{fp};
-    E8Stream s{};
-    e8_stream_create(&s, &g_vtable, fc);
-    return s;
-}
-
-} // anonymous namespace
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Constructor
@@ -97,6 +54,7 @@ QVariantList ArchiveBackend::formats() const {
         m["extension"] = kFormats[i].extension;
         m["color"]     = kFormats[i].color;
         m["supported"] = kFormats[i].supported;
+        m["encrypts"]  = kFormats[i].encrypts;
         list.append(m);
     }
     return list;
@@ -106,6 +64,7 @@ int     ArchiveBackend::formatIndex()     const { return m_formatIndex; }
 QString ArchiveBackend::formatName()      const { return kFormats[m_formatIndex].name; }
 QString ArchiveBackend::formatColor()     const { return kFormats[m_formatIndex].color; }
 bool    ArchiveBackend::formatSupported() const { return kFormats[m_formatIndex].supported; }
+bool    ArchiveBackend::supportsEncryption() const { return kFormats[m_formatIndex].encrypts; }
 
 void ArchiveBackend::setFormatIndex(int v) {
     if (v < 0 || v >= kFormatCount || v == m_formatIndex) return;
@@ -190,53 +149,61 @@ QString ArchiveBackend::formatSize(quint64 bytes) const {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Engine operations
+// Engine operations (using multi_format API)
 // ═════════════════════════════════════════════════════════════════════════════
-bool ArchiveBackend::openArchive(const QString &path) {
-    e8_codecs_init();
 
-    std::string spath = path.toStdString();
-    FILE *fp = fopen(spath.c_str(), "rb");
-    if (!fp) {
-        setStatus("Cannot open: " + path, true);
-        return false;
+static const QStringList kArchiveExtensions = {
+    ".e8", ".7z", ".zip", ".tar", ".gz", ".bz2", ".xz", ".lz",
+    ".tgz", ".tbz2", ".txz", ".tar.gz", ".tar.bz2", ".tar.xz", ".tar.lz"
+};
+
+static bool isArchiveFile(const QString &path) {
+    QString lower = path.toLower();
+    for (const auto &ext : kArchiveExtensions) {
+        if (lower.endsWith(ext)) return true;
     }
+    return false;
+}
 
-    E8Stream stream = make_stream(fp);
-    E8Archive *ar   = e8_archive_open(&stream);
-    if (!ar) {
-        e8_stream_destroy(&stream);
-        setStatus("Invalid archive format: " + path, true);
+bool ArchiveBackend::openArchive(const QString &path) {
+    std::string spath = path.toStdString();
+    const char *pw = m_password.isEmpty() ? nullptr : m_password.toStdString().c_str();
+
+    /* Use password as a persistent std::string to avoid dangling pointer */
+    std::string pw_str = m_password.toStdString();
+    const char *pw_ptr = pw_str.empty() ? nullptr : pw_str.c_str();
+
+    char **paths = nullptr;
+    uint64_t *sizes = nullptr;
+    size_t count = 0;
+
+    int r = e8_mf_list(spath.c_str(), pw_ptr, &paths, &sizes, &count);
+    if (r != 0) {
+        setStatus("Cannot open archive: " + path, true);
         return false;
     }
 
     m_entries.clear();
     m_totalUncompressed = 0;
-    m_totalCompressed   = 0;
-    size_t n = e8_archive_count(ar);
 
-    for (size_t i = 0; i < n; ++i) {
-        char pbuf[4096];
-        uint64_t usize = 0;
-        e8_archive_entry(ar, i, pbuf, sizeof(pbuf), &usize);
-
+    for (size_t i = 0; i < count; ++i) {
         QVariantMap entry;
-        entry["path"]             = QString::fromUtf8(pbuf);
-        entry["uncompressedSize"] = static_cast<quint64>(usize);
-        entry["compressedSize"]   = static_cast<quint64>(usize); // placeholder
+        entry["path"]             = QString::fromUtf8(paths[i]);
+        entry["uncompressedSize"] = static_cast<quint64>(sizes ? sizes[i] : 0);
+        entry["compressedSize"]   = static_cast<quint64>(sizes ? sizes[i] : 0);
         entry["codecId"]          = 0;
-        entry["codecName"]        = "Store";
-        entry["sizeStr"]          = formatSize(usize);
+        entry["codecName"]        = "—";
+        entry["sizeStr"]          = formatSize(sizes ? sizes[i] : 0);
 
         m_entries.append(entry);
-        m_totalUncompressed += usize;
+        if (sizes) m_totalUncompressed += sizes[i];
     }
 
-    e8_archive_close(ar);
+    e8_mf_free_list(paths, sizes, count);
 
     m_archivePath = path;
     m_archiveOpen = true;
-    setStatus(QString("Opened: %1 (%2 entries)").arg(path).arg(n), false);
+    setStatus(QString("Opened: %1 (%2 entries)").arg(path).arg(count), false);
     emit archivePathChanged();
     emit archiveOpenChanged();
     emit entriesChanged();
@@ -244,56 +211,46 @@ bool ArchiveBackend::openArchive(const QString &path) {
 }
 
 bool ArchiveBackend::createArchive(const QStringList &files) {
-    e8_codecs_init();
-
     if (files.isEmpty()) {
         setStatus("No files to add.", true);
         return false;
     }
 
     const auto &fmt = kFormats[m_formatIndex];
-    if (!fmt.supported) {
-        setStatus(QString("%1 format is not yet supported.").arg(fmt.name), true);
-        return false;
-    }
 
-    // Auto-generate output path
+    // Build output path
     QFileInfo fi(files.first());
     QString outputPath = fi.absolutePath() + "/" + fi.completeBaseName() + fmt.extension;
 
-    std::string sout = outputPath.toStdString();
-    FILE *out_fp = fopen(sout.c_str(), "wb");
-    if (!out_fp) {
-        setStatus("Cannot create: " + outputPath, true);
+    // Prepare file list for C API
+    std::vector<std::string> file_strs;
+    std::vector<const char*> file_ptrs;
+    for (const auto &f : files) {
+        file_strs.push_back(f.toStdString());
+        file_ptrs.push_back(file_strs.back().c_str());
+    }
+
+    // Password (only if format supports encryption and password is set)
+    std::string pw_str = m_password.toStdString();
+    const char *pw_ptr = nullptr;
+    if (fmt.encrypts && !pw_str.empty()) {
+        pw_ptr = pw_str.c_str();
+    }
+
+    int r = e8_mf_create(outputPath.toStdString().c_str(),
+                         fmt.e8fmt,
+                         file_ptrs.data(),
+                         file_ptrs.size(),
+                         pw_ptr,
+                         m_methodIndex,
+                         nullptr, nullptr);
+
+    if (r < 0) {
+        setStatus(QString("Failed to create %1 archive.").arg(fmt.name), true);
         return false;
     }
 
-    E8Stream out_stream = make_stream(out_fp);
-    E8Archive *ar = e8_archive_create(&out_stream);
-    if (!ar) {
-        e8_stream_destroy(&out_stream);
-        setStatus("Failed to create archive.", true);
-        return false;
-    }
-
-    int added = 0;
-    for (const auto &fpath : files) {
-        std::string sfp = fpath.toStdString();
-        FILE *in_fp = fopen(sfp.c_str(), "rb");
-        if (!in_fp) continue;
-        E8Stream in_stream = make_stream(in_fp);
-
-        QFileInfo info(fpath);
-        std::string name = info.fileName().toStdString();
-
-        int r = e8_archive_add(ar, name.c_str(), &in_stream, nullptr, nullptr);
-        e8_stream_destroy(&in_stream);
-        if (r == 0) added++;
-    }
-
-    e8_archive_close(ar);
-
-    setStatus(QString("Created %1 (%2 files)").arg(outputPath).arg(added), false);
+    setStatus(QString("Created %1 (%2 files)").arg(outputPath).arg(r), false);
 
     // Auto-open the new archive
     openArchive(outputPath);
@@ -313,7 +270,7 @@ void ArchiveBackend::handleDroppedUrls(const QList<QUrl> &urls) {
         QString local = url.toLocalFile();
         if (local.isEmpty()) continue;
 
-        if (local.endsWith(".e8", Qt::CaseInsensitive)) {
+        if (isArchiveFile(local)) {
             archivePaths.append(local);
         } else {
             filePaths.append(local);
@@ -334,8 +291,6 @@ void ArchiveBackend::handleDroppedUrls(const QList<QUrl> &urls) {
 }
 
 void ArchiveBackend::extractAll(const QUrl &folderUrl) {
-    e8_codecs_init();
-
     QString outputDir = folderUrl.toLocalFile();
     if (outputDir.isEmpty()) {
         setStatus("No output directory selected.", true);
@@ -347,44 +302,18 @@ void ArchiveBackend::extractAll(const QUrl &folderUrl) {
         return;
     }
 
-    std::string spath = m_archivePath.toStdString();
-    FILE *fp = fopen(spath.c_str(), "rb");
-    if (!fp) {
-        setStatus("Cannot reopen: " + m_archivePath, true);
+    std::string pw_str = m_password.toStdString();
+    const char *pw_ptr = pw_str.empty() ? nullptr : pw_str.c_str();
+
+    int r = e8_mf_extract(m_archivePath.toStdString().c_str(),
+                          outputDir.toStdString().c_str(),
+                          pw_ptr,
+                          nullptr, nullptr);
+
+    if (r < 0) {
+        setStatus("Extraction failed.", true);
         return;
     }
 
-    E8Stream stream = make_stream(fp);
-    E8Archive *ar   = e8_archive_open(&stream);
-    if (!ar) {
-        e8_stream_destroy(&stream);
-        setStatus("Failed to reopen archive.", true);
-        return;
-    }
-
-    size_t n = e8_archive_count(ar);
-    int extracted = 0;
-
-    for (size_t i = 0; i < n; ++i) {
-        char pbuf[4096];
-        uint64_t usize = 0;
-        e8_archive_entry(ar, i, pbuf, sizeof(pbuf), &usize);
-
-        // Use just the filename
-        QString name = QFileInfo(QString::fromUtf8(pbuf)).fileName();
-        QString outpath = outputDir + "/" + name;
-
-        std::string sout = outpath.toStdString();
-        FILE *out_fp = fopen(sout.c_str(), "wb");
-        if (!out_fp) continue;
-
-        E8Stream out_stream = make_stream(out_fp);
-        int r = e8_archive_extract(ar, i, &out_stream, nullptr, nullptr);
-        e8_stream_destroy(&out_stream);
-        if (r == 0) extracted++;
-    }
-
-    e8_archive_close(ar);
-
-    setStatus(QString("Extracted %1 file(s) to %2").arg(extracted).arg(outputDir), false);
+    setStatus(QString("Extracted %1 file(s) to %2").arg(r).arg(outputDir), false);
 }

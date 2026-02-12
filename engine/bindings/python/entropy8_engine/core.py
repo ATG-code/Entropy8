@@ -89,10 +89,10 @@ def _bind():
     lib.e8_stream_destroy.argtypes = [POINTER(E8Stream)]
     lib.e8_stream_destroy.restype = None
 
-    lib.e8_archive_create.argtypes = [POINTER(E8Stream)]
+    lib.e8_archive_create.argtypes = [POINTER(E8Stream), c_char_p]
     lib.e8_archive_create.restype = c_void_p
 
-    lib.e8_archive_open.argtypes = [POINTER(E8Stream)]
+    lib.e8_archive_open.argtypes = [POINTER(E8Stream), c_char_p]
     lib.e8_archive_open.restype = c_void_p
 
     lib.e8_archive_close.argtypes = [c_void_p]
@@ -199,12 +199,13 @@ def stream_from_path(path, mode="rb"):
 class Archive:
     """Python wrapper for E8Archive."""
 
-    def __init__(self, stream, create=True):
+    def __init__(self, stream, create=True, password=None):
         lib = _bind()
+        pw = password.encode("utf-8") if password else None
         if create:
-            self._handle = lib.e8_archive_create(byref(stream))
+            self._handle = lib.e8_archive_create(byref(stream), pw)
         else:
-            self._handle = lib.e8_archive_open(byref(stream))
+            self._handle = lib.e8_archive_open(byref(stream), pw)
         if not self._handle:
             raise RuntimeError(f"Archive open failed: error {lib.e8_last_error()}")
         self._stream = stream

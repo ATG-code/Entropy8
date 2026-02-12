@@ -15,8 +15,8 @@ extern "C" {
 
 typedef struct E8Stream E8Stream;
 
-void *e8_engine_create(E8Stream *stream);
-void *e8_engine_open(E8Stream *stream);
+void *e8_engine_create(E8Stream *stream, const char *password);
+void *e8_engine_open(E8Stream *stream, const char *password);
 void e8_engine_close(void *engine);
 
 int e8_engine_add(void *engine, const char *path, E8Stream *content_stream,

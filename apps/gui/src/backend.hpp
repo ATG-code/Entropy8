@@ -8,7 +8,7 @@
 #include <cstdint>
 
 /**
- * C++ backend that bridges the entropy8 C engine with the QML front-end.
+ * C++ backend that bridges the entropy8 multi-format engine with the QML front-end.
  * Every piece of UI state is exposed as a Q_PROPERTY so QML can bind to it.
  */
 class ArchiveBackend : public QObject {
@@ -20,6 +20,7 @@ class ArchiveBackend : public QObject {
     Q_PROPERTY(QString      formatName    READ formatName    NOTIFY formatIndexChanged)
     Q_PROPERTY(QString      formatColor   READ formatColor   NOTIFY formatIndexChanged)
     Q_PROPERTY(bool         formatSupported READ formatSupported NOTIFY formatIndexChanged)
+    Q_PROPERTY(bool         supportsEncryption READ supportsEncryption NOTIFY formatIndexChanged)
 
     // ── Method / codec ───────────────────────────────────────────────────
     Q_PROPERTY(int methodIndex READ methodIndex WRITE setMethodIndex NOTIFY methodIndexChanged)
@@ -61,6 +62,7 @@ public:
     QString      formatName() const;
     QString      formatColor() const;
     bool         formatSupported() const;
+    bool         supportsEncryption() const;
 
     int     methodIndex() const;
     int     codecIndex() const;

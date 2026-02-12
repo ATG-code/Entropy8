@@ -10,11 +10,11 @@ ApplicationWindow {
     id: root
     visible: true
     width: 400
-    height: 560
+    height: 600
     minimumWidth: 400
     maximumWidth: 400
-    minimumHeight: 560
-    maximumHeight: 560
+    minimumHeight: 600
+    maximumHeight: 600
     title: "Entropy8"
     color: theme.bg
 
@@ -252,12 +252,41 @@ ApplicationWindow {
                 }
 
                 // ═══════════════════════════════════════════════════════════
+                // Encryption indicator
+                // ═══════════════════════════════════════════════════════════
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 6
+                    height: 24
+                    radius: 6
+                    color: backend.supportsEncryption
+                           ? Qt.rgba(0.25, 0.56, 0.96, 0.08)
+                           : Qt.rgba(1, 1, 1, 0.03)
+                    border.color: backend.supportsEncryption
+                                  ? Qt.rgba(0.25, 0.56, 0.96, 0.2)
+                                  : theme.border
+                    border.width: 1
+                    visible: true
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: backend.supportsEncryption
+                              ? "\uD83D\uDD12 AES-256 encryption available"
+                              : "\uD83D\uDD13 Encryption not supported for " + backend.formatName
+                        font.family: theme.fontFamily
+                        font.pixelSize: 11
+                        color: backend.supportsEncryption ? theme.accent : theme.textDim
+                    }
+                }
+
+                // ═══════════════════════════════════════════════════════════
                 // Password
                 // ═══════════════════════════════════════════════════════════
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.topMargin: 6
                     spacing: 10
+                    opacity: backend.supportsEncryption ? 1.0 : 0.4
 
                     Text {
                         text: "Password:"
@@ -313,6 +342,7 @@ ApplicationWindow {
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 10
+                    opacity: backend.supportsEncryption ? 1.0 : 0.4
 
                     Text {
                         text: "Repeat:"
@@ -535,8 +565,16 @@ ApplicationWindow {
                             font.family: theme.fontFamily
                             font.pixelSize: 13
                             font.weight: backend.formatIndex === index ? Font.DemiBold : Font.Normal
-                            color: !modelData.supported && backend.formatIndex !== index
-                                   ? theme.textDim : theme.text
+                            color: theme.text
+                        }
+
+                        // Lock icon (encryption support)
+                        Text {
+                            text: modelData.encrypts ? "\uD83D\uDD12" : ""
+                            font.pixelSize: 11
+                            color: theme.textDim
+                            Layout.preferredWidth: 16
+                            horizontalAlignment: Text.AlignHCenter
                         }
                     }
 
