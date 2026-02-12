@@ -1,0 +1,9 @@
+-rootPath
+C:/Users/aytug/Documents/Entropy8/apps/gui
+-cmake-output
+-output-file
+C:/Users/aytug/Documents/Entropy8/build_release/apps/gui/.qt/qml_imports/entropy8_gui_conf.cmake
+-importPath
+C:/Users/aytug/Documents/Entropy8/build_release/apps/gui
+-importPath
+C:/Qt/6.8.2/mingw_64/qml
