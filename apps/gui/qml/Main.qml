@@ -478,15 +478,19 @@ ApplicationWindow {
         y: 58
         width: 180
         padding: 8
+        modal: true
+        dim: false
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        Overlay.modal: Rectangle {
+            color: "transparent"
+        }
 
         background: Rectangle {
             radius: 10
             color: "#222226"
             border.color: theme.border
             border.width: 1
-
-            layer.enabled: true
-            layer.effect: Item {} // placeholder for shadow
         }
 
         contentItem: Column {
