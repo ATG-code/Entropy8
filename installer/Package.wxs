@@ -1,0 +1,149 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Entropy8 MSI Installer — v0.0.2
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <Package Name="Entropy8"
+           Version="0.0.2.0"
+           Manufacturer="ATG-code"
+           UpgradeCode="B8E7F4A1-3C5D-4E6F-9A2B-1D8C7E0F5A3B"
+           Scope="perMachine">
+
+    <SummaryInformation Description="Entropy8 - Modern File Archiver with AES-256 Encryption" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Entropy8 is already installed." />
+
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <!-- WixUI FeatureTree: lets user pick which features to install -->
+    <ui:WixUI Id="WixUI_FeatureTree" />
+
+    <!-- ─── License ──────────────────────────────────────────────────────── -->
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         Features
+         ═══════════════════════════════════════════════════════════════════ -->
+    <Feature Id="MainApp"
+             Title="Entropy8 Application"
+             Description="Core application and all required libraries."
+             Level="1"
+             AllowAbsent="no">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentRef Id="DesktopShortcut" />
+    </Feature>
+
+    <Feature Id="ShellIntegration"
+             Title="Open with Entropy8 (Right-Click Menu)"
+             Description="Add 'Open / Compress with Entropy8' to the right-click context menu for all files and folders."
+             Level="1"
+             AllowAbsent="yes">
+      <ComponentRef Id="ShellAllFiles" />
+      <ComponentRef Id="ShellDirectory" />
+      <ComponentRef Id="AppPathReg" />
+    </Feature>
+
+  </Package>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Directory Structure
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <Fragment>
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="Entropy8" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="Entropy8ProgramMenu" Name="Entropy8" />
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+  </Fragment>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Application Files (auto-harvested from dist\Entropy8)
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <Fragment>
+    <!-- NOTE: Run 'wix build' from the project root directory.
+         The Include path is relative to the WXS file location.
+         Use -bindpath to override if building from a different directory. -->
+    <ComponentGroup Id="AppFiles" Directory="INSTALLFOLDER">
+      <Files Include="$(sys.SOURCEFILEDIR)..\dist\Entropy8\**">
+        <Exclude Files="$(sys.SOURCEFILEDIR)..\dist\Entropy8\register-shell.ps1" />
+      </Files>
+    </ComponentGroup>
+  </Fragment>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Start Menu + Desktop Shortcuts
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <Fragment>
+    <Component Id="StartMenuShortcut" Directory="Entropy8ProgramMenu" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890">
+      <Shortcut Id="StartMenuLink"
+                Name="Entropy8"
+                Description="Modern File Archiver"
+                Target="[INSTALLFOLDER]entropy8_gui.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <Shortcut Id="UninstallLink"
+                Name="Uninstall Entropy8"
+                Description="Uninstall Entropy8"
+                Target="[SystemFolder]msiexec.exe"
+                Arguments="/x [ProductCode]" />
+      <RemoveFolder Id="RemoveStartMenu" On="uninstall" />
+      <RegistryValue Root="HKCU" Key="Software\Entropy8" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+
+    <Component Id="DesktopShortcut" Directory="DesktopFolder" Guid="F0E1D2C3-B4A5-6789-0ABC-DEF123456789">
+      <Shortcut Id="DesktopLink"
+                Name="Entropy8"
+                Description="Modern File Archiver"
+                Target="[INSTALLFOLDER]entropy8_gui.exe"
+                WorkingDirectory="INSTALLFOLDER" />
+      <RegistryValue Root="HKCU" Key="Software\Entropy8" Name="Desktop" Type="integer" Value="1" KeyPath="yes" />
+    </Component>
+  </Fragment>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Shell Integration (right-click context menu) — OPTIONAL feature
+       ═══════════════════════════════════════════════════════════════════════ -->
+  <Fragment>
+    <!-- Context menu for ALL files -->
+    <Component Id="ShellAllFiles" Directory="INSTALLFOLDER" Guid="11111111-2222-3333-4444-555566667777">
+      <RegistryKey Root="HKCR" Key="*\shell\Entropy8">
+        <RegistryValue Type="string" Value="Open / Compress with Entropy8" />
+        <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLFOLDER]entropy8_gui.exe&quot;,0" />
+      </RegistryKey>
+      <RegistryKey Root="HKCR" Key="*\shell\Entropy8\command">
+        <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]entropy8_gui.exe&quot; &quot;%1&quot;" />
+      </RegistryKey>
+    </Component>
+
+    <!-- Context menu for folders -->
+    <Component Id="ShellDirectory" Directory="INSTALLFOLDER" Guid="AAAAAAAA-BBBB-CCCC-DDDD-EEEEFFFFAAAA">
+      <RegistryKey Root="HKCR" Key="Directory\shell\Entropy8">
+        <RegistryValue Type="string" Value="Compress with Entropy8" />
+        <RegistryValue Name="Icon" Type="string" Value="&quot;[INSTALLFOLDER]entropy8_gui.exe&quot;,0" />
+      </RegistryKey>
+      <RegistryKey Root="HKCR" Key="Directory\shell\Entropy8\command">
+        <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]entropy8_gui.exe&quot; &quot;%1&quot;" />
+      </RegistryKey>
+    </Component>
+
+    <!-- App Paths + Open With registration -->
+    <Component Id="AppPathReg" Directory="INSTALLFOLDER" Guid="12345678-9ABC-DEF0-1234-56789ABCDEF0">
+      <RegistryKey Root="HKCR" Key="Applications\entropy8_gui.exe">
+        <RegistryValue Name="FriendlyAppName" Type="string" Value="Entropy8" />
+      </RegistryKey>
+      <RegistryKey Root="HKCR" Key="Applications\entropy8_gui.exe\shell\open\command">
+        <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]entropy8_gui.exe&quot; &quot;%1&quot;" />
+      </RegistryKey>
+      <RegistryKey Root="HKLM" Key="SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\entropy8_gui.exe">
+        <RegistryValue Type="string" Value="[INSTALLFOLDER]entropy8_gui.exe" />
+        <RegistryValue Name="Path" Type="string" Value="[INSTALLFOLDER]" />
+      </RegistryKey>
+    </Component>
+  </Fragment>
+
+</Wix>
