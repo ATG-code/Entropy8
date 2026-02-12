@@ -4,6 +4,7 @@
 #include <QFontDatabase>
 #include <QFont>
 #include <QQuickStyle>
+#include <QTimer>
 
 #include "backend.hpp"
 
@@ -47,6 +48,17 @@ int main(int argc, char *argv[])
     engine.load(QUrl(QStringLiteral("qrc:/Main.qml")));
     if (engine.rootObjects().isEmpty())
         return -1;
+
+    // ── Open file from command-line argument (shell integration) ───────
+    const QStringList args = app.arguments();
+    if (args.size() > 1) {
+        // First argument after the executable is the file path
+        QString filePath = args.at(1);
+        // Use QTimer::singleShot so the event loop is running when we open
+        QTimer::singleShot(0, &backend, [&backend, filePath]() {
+            backend.openFileFromPath(filePath);
+        });
+    }
 
     return app.exec();
 }

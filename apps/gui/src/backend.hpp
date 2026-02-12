@@ -109,7 +109,11 @@ public:
     Q_INVOKABLE void extractAll(const QUrl &folderUrl);
     Q_INVOKABLE QString formatSize(quint64 bytes) const;
 
+    /// Open an archive file by path (used for command-line / shell integration)
+    Q_INVOKABLE void openFileFromPath(const QString &filePath);
+
 signals:
+    void extractionFinished(bool success, const QString &message);
     void formatIndexChanged();
     void methodIndexChanged();
     void codecIndexChanged();

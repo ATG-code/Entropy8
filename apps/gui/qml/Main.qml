@@ -87,6 +87,25 @@ ApplicationWindow {
         onAccepted: backend.extractAll(selectedFolder)
     }
 
+    // ─── Auto-close viewer after successful extraction ─────────────────
+    Connections {
+        target: backend
+        function onExtractionFinished(success, message) {
+            if (success) {
+                extractDoneTimer.start()
+            }
+        }
+    }
+
+    Timer {
+        id: extractDoneTimer
+        interval: 1500
+        repeat: false
+        onTriggered: {
+            backend.showViewer = false
+        }
+    }
+
     // ─── Drop area (full window) ─────────────────────────────────────────
     DropArea {
         id: dropArea

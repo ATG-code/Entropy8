@@ -342,14 +342,35 @@ void ArchiveBackend::extractAll(const QUrl &folderUrl) {
                           nullptr, nullptr);
 
     if (r < 0) {
+        QString msg;
         if (m_archiveEncrypted && pw_str.empty())
-            setStatus("Extraction failed. Enter password for encrypted archive.", true);
+            msg = "Extraction failed. Enter password for encrypted archive.";
         else if (m_archiveEncrypted)
-            setStatus("Extraction failed. Wrong password?", true);
+            msg = "Extraction failed. Wrong password?";
         else
-            setStatus("Extraction failed.", true);
+            msg = "Extraction failed.";
+        setStatus(msg, true);
+        emit extractionFinished(false, msg);
         return;
     }
 
-    setStatus(QString("Extracted %1 file(s) to %2").arg(r).arg(outputDir), false);
+    QString msg = QString("Extracted %1 file(s) to %2").arg(r).arg(outputDir);
+    setStatus(msg, false);
+    emit extractionFinished(true, msg);
+}
+
+void ArchiveBackend::openFileFromPath(const QString &filePath) {
+    if (filePath.isEmpty()) return;
+
+    // Normalize path separators
+    QString path = QDir::toNativeSeparators(filePath);
+
+    if (isArchiveFile(path)) {
+        openArchive(path);
+        m_showViewer = true;
+        emit showViewerChanged();
+    } else {
+        // Non-archive file: add to compression queue
+        createArchive(QStringList{path});
+    }
 }
